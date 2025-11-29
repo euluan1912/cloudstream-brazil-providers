@@ -5,10 +5,10 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
 class SuperFlixProvider : MainAPI() {
-    override var mainUrl = "https://superflixapi.top"
+    override var mainUrl = "https://superflix.com.br"
     override var name = "SuperFlix"
     override val hasMainPage = true
-    override var lang = "pt"
+    override var lang = "pt"  // ← CORRETO: String simples
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(
         TvType.Movie,
@@ -16,74 +16,93 @@ class SuperFlixProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "$mainUrl/api/movie/trending?page=" to "Filmes em Alta",
-        "$mainUrl/api/serie/trending?page=" to "Séries em Alta",
-        "$mainUrl/api/movie/popular?page=" to "Filmes Populares",
-        "$mainUrl/api/serie/popular?page=" to "Séries Populares"
+        "$mainUrl/filmes/page/" to "Filmes",
+        "$mainUrl/series/page/" to "Séries"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = request.data + page
-        val response = app.get(url).parsed<ApiResponse>()
+        val document = app.get(request.data + page).document
         
-        val home = response.results?.mapNotNull { item ->
-            item.toSearchResponse()
-        } ?: emptyList()
+        val home = document.select("article.post").mapNotNull { article ->
+            article.toSearchResponse()
+        }
         
         return newHomePageResponse(request.name, home)
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val movieUrl = "$mainUrl/api/search/multi?query=$query&page=1"
-        val response = app.get(movieUrl).parsed<ApiResponse>()
+    private fun Element.toSearchResponse(): SearchResponse? {
+        val title = this.selectFirst("h2")?.text() ?: return null
+        val href = this.selectFirst("a")?.attr("href") ?: return null
+        val posterUrl = this.selectFirst("img")?.attr("src")
+        val isSeries = href.contains("/series/")
         
-        return response.results?.mapNotNull { it.toSearchResponse() } ?: emptyList()
+        return if (isSeries) {
+            newTvSeriesSearchResponse(  // ← CORRETO: new* method
+                title,
+                href,
+                TvType.TvSeries
+            ) {
+                this.posterUrl = posterUrl
+            }
+        } else {
+            newMovieSearchResponse(  // ← CORRETO: new* method
+                title,
+                href,
+                TvType.Movie
+            ) {
+                this.posterUrl = posterUrl
+            }
+        }
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        val document = app.get("$mainUrl/?s=$query").document
+        return document.select("article.post").mapNotNull { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val id = url.substringAfterLast("/")
-        val type = if (url.contains("/movie/")) "movie" else "tv"
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text() ?: ""
+        val poster = document.selectFirst(".poster img")?.attr("src")
+        val description = document.selectFirst(".sinopse")?.text()
+        val year = document.selectFirst(".year")?.text()?.toIntOrNull()
+        val isSeries = url.contains("/series/")
         
-        val apiUrl = "$mainUrl/api/$type/$id"
-        val data = app.get(apiUrl).parsed<MediaDetail>()
-        
-        return if (type == "movie") {
-            newMovieLoadResponse(
-                data.title ?: data.name ?: "",
-                url,
-                TvType.Movie,
-                url
-            ) {
-                this.posterUrl = data.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                this.year = data.release_date?.substringBefore("-")?.toIntOrNull()
-                this.plot = data.overview
-                this.tags = data.genres?.map { it.name }
-                this.rating = data.vote_average?.times(1000)?.toInt()
+        return if (isSeries) {
+            val episodes = document.select(".episodios .episodio").map { ep ->
+                val epHref = ep.attr("href")
+                val epName = ep.selectFirst(".titulo")?.text() ?: "Episódio"
+                val season = ep.attr("data-season")?.toIntOrNull() ?: 1
+                val episode = ep.attr("data-episode")?.toIntOrNull() ?: 1
+                
+                Episode(
+                    data = epHref,
+                    name = epName,
+                    season = season,
+                    episode = episode
+                )
             }
-        } else {
-            val episodes = data.seasons?.flatMap { season ->
-                season.episodes?.map { episode ->
-                    Episode(
-                        data = "$mainUrl/api/tv/$id/${season.season_number}/${episode.episode_number}",
-                        name = episode.name,
-                        season = season.season_number,
-                        episode = episode.episode_number,
-                        posterUrl = episode.still_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                    )
-                } ?: emptyList()
-            } ?: emptyList()
             
-            newTvSeriesLoadResponse(
-                data.name ?: data.title ?: "",
+            newTvSeriesLoadResponse(  // ← CORRETO: new* method
+                title,
                 url,
                 TvType.TvSeries,
                 episodes
             ) {
-                this.posterUrl = data.poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                this.year = data.first_air_date?.substringBefore("-")?.toIntOrNull()
-                this.plot = data.overview
-                this.tags = data.genres?.map { it.name }
-                this.rating = data.vote_average?.times(1000)?.toInt()
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
+            }
+        } else {
+            newMovieLoadResponse(  // ← CORRETO: new* method
+                title,
+                url,
+                TvType.Movie,
+                url
+            ) {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = description
             }
         }
     }
@@ -94,122 +113,48 @@ class SuperFlixProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val videoUrl = "$data/watch"
-        val response = app.get(videoUrl).parsed<WatchResponse>()
+        val document = app.get(data).document
         
-        response.sources?.forEach { source ->
-            callback.invoke(
-                ExtractorLink(
-                    name,
-                    source.quality ?: "Unknown",
-                    source.url ?: return@forEach,
-                    referer = mainUrl,
-                    quality = getQualityFromName(source.quality),
-                    type = ExtractorLinkType.M3U8
-                )
-            )
+        // Buscar links de vídeo
+        document.select("iframe").forEach { iframe ->
+            val videoUrl = iframe.attr("src")
+            if (videoUrl.isNotBlank()) {
+                loadExtractor(videoUrl, data, subtitleCallback, callback)
+            }
         }
         
-        response.subtitles?.forEach { sub ->
-            subtitleCallback.invoke(
-                newSubtitleFile(
-                    sub.lang ?: "Unknown",
-                    sub.url ?: return@forEach
+        // Links diretos
+        document.select("source[src]").forEach { source ->
+            val videoUrl = source.attr("src")
+            if (videoUrl.isNotBlank()) {
+                callback.invoke(
+                    ExtractorLink(
+                        this.name,
+                        "HD",
+                        videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.P1080.value,
+                        type = ExtractorLinkType.M3U8  // ← OBRIGATÓRIO
+                    )
                 )
-            )
+            }
+        }
+        
+        // Legendas
+        document.select("track[kind=subtitles]").forEach { track ->
+            val subUrl = track.attr("src")
+            val label = track.attr("label") ?: "Português"
+            
+            if (subUrl.isNotBlank()) {
+                subtitleCallback.invoke(
+                    newSubtitleFile(  // ← CORRETO: newSubtitleFile ao invés de SubtitleFile()
+                        label,
+                        subUrl
+                    )
+                )
+            }
         }
         
         return true
     }
-
-    private fun getQualityFromName(quality: String?): Int {
-        return when {
-            quality?.contains("1080") == true -> Qualities.P1080.value
-            quality?.contains("720") == true -> Qualities.P720.value
-            quality?.contains("480") == true -> Qualities.P480.value
-            quality?.contains("360") == true -> Qualities.P360.value
-            else -> Qualities.Unknown.value
-        }
-    }
-
-    private fun MediaItem.toSearchResponse(): SearchResponse? {
-        val isMovie = media_type == "movie"
-        val url = "$mainUrl/${if (isMovie) "movie" else "tv"}/${id}"
-        
-        return if (isMovie) {
-            newMovieSearchResponse(
-                title ?: name ?: return null,
-                url,
-                TvType.Movie
-            ) {
-                this.posterUrl = poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                this.year = release_date?.substringBefore("-")?.toIntOrNull()
-            }
-        } else {
-            newTvSeriesSearchResponse(
-                name ?: title ?: return null,
-                url,
-                TvType.TvSeries
-            ) {
-                this.posterUrl = poster_path?.let { "https://image.tmdb.org/t/p/w500$it" }
-                this.year = first_air_date?.substringBefore("-")?.toIntOrNull()
-            }
-        }
-    }
-
-    // Data classes
-    data class ApiResponse(
-        val results: List<MediaItem>?
-    )
-
-    data class MediaItem(
-        val id: Int?,
-        val title: String?,
-        val name: String?,
-        val poster_path: String?,
-        val release_date: String?,
-        val first_air_date: String?,
-        val media_type: String?
-    )
-
-    data class MediaDetail(
-        val id: Int?,
-        val title: String?,
-        val name: String?,
-        val overview: String?,
-        val poster_path: String?,
-        val release_date: String?,
-        val first_air_date: String?,
-        val vote_average: Double?,
-        val genres: List<Genre>?,
-        val seasons: List<Season>?
-    )
-
-    data class Genre(val name: String?)
-
-    data class Season(
-        val season_number: Int?,
-        val episodes: List<Episode>?
-    )
-
-    data class Episode(
-        val episode_number: Int?,
-        val name: String?,
-        val still_path: String?
-    )
-
-    data class WatchResponse(
-        val sources: List<Source>?,
-        val subtitles: List<Subtitle>?
-    )
-
-    data class Source(
-        val url: String?,
-        val quality: String?
-    )
-
-    data class Subtitle(
-        val url: String?,
-        val lang: String?
-    )
 }
