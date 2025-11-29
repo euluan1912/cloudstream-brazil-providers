@@ -9,10 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-        steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }} # Adicionado para conceder permissão de escrita
+    steps:
+     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }} # Adicionado para conceder permissão de escrita
 
 
       # 1. SETUP JAVA/GRADLE
