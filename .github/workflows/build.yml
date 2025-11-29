@@ -22,33 +22,25 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
+      - name: Build with Gradle (Cria os .cs3)
         run: ./gradlew assemble --refresh-dependencies --info
 
-      - name: Generate repository.json
-        # Cria o arquivo na raiz do projeto
+      - name: Generate repository.json (Cria o JSON do Repositório)
         run: ./gradlew makePluginsJson
         
-      # --- CORREÇÃO DE CAMINHO INICIA AQUI ---
-
-      - name: Criar Pasta 'builds'
-        # Garante que a pasta de destino exista
-        run: mkdir -p builds
-
-      - name: Mover e Renomear Repo JSON
-        # CORREÇÃO: Tentamos mover 'repo.json' (nome de arquivo mais comum) da raiz para a pasta 'builds'.
-        # O || true garante que, se 'repo.json' também não estiver na raiz (por exemplo, se já foi criado em 'builds/'), 
-        # a etapa não pare o workflow, permitindo que o upload tente encontrar o arquivo na próxima etapa.
-        run: mv repo.json builds/repo.json || true 
+      # --- PASSO DETETIVE (DEBUG) ---
+      - name: ONDE ESTÃO OS ARQUIVOS? (DEBUG)
+        # Este comando lista todos os arquivos e pastas recursivamente após o build.
+        # Procure por 'repo.json' ou 'repository.json' neste log!
+        run: ls -R
+        
+      # --- REMOVEMOS A ETAPA 'MV' QUE ESTAVA FALHANDO ---
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: euluan-repo
           path: |
-            # O upload espera o arquivo aqui
+            # Caminhos limpos, sem comentários, para o GitHub Actions
             builds/repo.json
-            # Caminho para os arquivos CS3.
             **/build/libs/*.cs3
-
-# O arquivo build.yml deve ser substituído por este conteúdo.
