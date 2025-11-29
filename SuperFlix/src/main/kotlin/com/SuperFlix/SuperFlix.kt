@@ -2,19 +2,19 @@ package com.SuperFlix
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newSubtitleFile
+import org.jsoup.nodes.Element
 
 class SuperFlixProvider : MainAPI() {
-    override val mainUrl = "https://superflix.com.br"
-    override val name = "SuperFlix"
+    override var mainUrl = "https://superflix.com.br"
+    override var name = "SuperFlix"
     override val hasMainPage = true
-    override val lang = listOf("pt") // ou listOf("pt","pt-br")
+    override val lang = listOf("pt")
     override val hasDownloadSupport = true
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries
-    )
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
         "$mainUrl/filmes/page/" to "Filmes",
@@ -23,36 +23,20 @@ class SuperFlixProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
-
-        val home = document.select("article.post").mapNotNull { article ->
-            article.toSearchResponse()
-        }
-
+        val home = document.select("article.post").mapNotNull { it.toSearchResponse() }
         return newHomePageResponse(request.name, home)
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
-        val title = this.selectFirst("h2")?.text() ?: return null
-        val href = this.selectFirst("a")?.attr("href") ?: return null
-        val posterUrl = this.selectFirst("img")?.attr("src")
+        val title = selectFirst("h2")?.text() ?: return null
+        val href = selectFirst("a")?.attr("href") ?: return null
+        val posterUrl = selectFirst("img")?.attr("src")
         val isSeries = href.contains("/series/")
 
         return if (isSeries) {
-            newTvSeriesSearchResponse(
-                title,
-                href,
-                TvType.TvSeries
-            ) {
-                this.posterUrl = posterUrl
-            }
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
         } else {
-            newMovieSearchResponse(
-                title,
-                href,
-                TvType.Movie
-            ) {
-                this.posterUrl = posterUrl
-            }
+            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl }
         }
     }
 
@@ -70,37 +54,26 @@ class SuperFlixProvider : MainAPI() {
         val isSeries = url.contains("/series/")
 
         return if (isSeries) {
-            val episodes = document.select(".episodios .episodio").map { ep ->
+            val episodes = document.select(".episodios .episodio").mapNotNull { ep ->
                 val epHref = ep.attr("href")
                 val epName = ep.selectFirst(".titulo")?.text() ?: "Episódio"
                 val season = ep.attr("data-season")?.toIntOrNull() ?: 1
                 val episode = ep.attr("data-episode")?.toIntOrNull() ?: 1
 
-                Episode(
-                    data = epHref,
-                    name = epName,
-                    season = season,
-                    episode = episode
-                )
+                newEpisode(epHref) {
+                    this.name = epName
+                    this.season = season
+                    this.episode = episode
+                }
             }
 
-            newTvSeriesLoadResponse(
-                title,
-                url,
-                TvType.TvSeries,
-                episodes
-            ) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
             }
         } else {
-            newMovieLoadResponse(
-                title,
-                url,
-                TvType.Movie,
-                url
-            ) {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = description
@@ -116,42 +89,36 @@ class SuperFlixProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // iframes / players embutidos
         document.select("iframe").forEach { iframe ->
-            val videoUrl = iframe.attr("src")
-            if (videoUrl.isNotBlank()) {
-                loadExtractor(videoUrl, data, subtitleCallback, callback)
-            }
+            val src = iframe.attr("src")
+            if (src.isNotBlank()) loadExtractor(src, data, subtitleCallback, callback)
         }
 
-        // sources diretos (ex: <source src=...>)
         document.select("source[src]").forEach { source ->
-            val videoUrl = source.attr("src")
-            if (videoUrl.isNotBlank()) {
+            val src = source.attr("src")
+            if (src.isNotBlank()) {
                 callback.invoke(
                     ExtractorLink(
-                        name = this@SuperFlixProvider.name,
-                        extractorName = "SuperFlix",
-                        url = videoUrl,
+                        source = name,
+                        name = name,
+                        url = src,
                         referer = mainUrl,
-                        quality = Qualities.P1080.value,
-                        type = ExtractorLinkType.M3U8 // obrigatório para m3u8
+                        quality = Qualities.Unknown.value,
+                        type = ExtractorLinkType.M3U8
                     )
                 )
             }
         }
 
-        // legendas (track kind=subtitles)
         document.select("track[kind=subtitles]").forEach { track ->
             val subUrl = track.attr("src")
             val label = track.attr("label").ifBlank { "Português" }
-
             if (subUrl.isNotBlank()) {
                 subtitleCallback.invoke(
-                    newSubtitleFile(
-                        label,
-                        subUrl
-                    )
+                    newSubtitleFile {
+                        lang = label
+                        url = subUrl
+                    }
                 )
             }
         }
