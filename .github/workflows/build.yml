@@ -30,6 +30,9 @@ jobs:
       - name: Build with Gradle (Cria os .cs3)
         run: ./gradlew assemble --refresh-dependencies --info
 
+      - name: Generate repository.json
+        run: ./gradlew makePluginsJson # Esta etapa DEVE ser verificada se a Etapa 4 falhar
+
       # 4. CRIAÇÃO DA ESTRUTURA FINAL (MOVER E COPIAR)
       - name: Mover repo.json e Copiar .cs3 para pasta de deploy
         run: |
@@ -37,17 +40,15 @@ jobs:
           mkdir -p builds
           
           # 2. Move o manifesto (Repo.json)
-          mv build/plugins.json builds/repo.json || true
+          # *** CORREÇÃO: Removido o '|| true' para que a falha seja detectada aqui ***
+          mv build/plugins.json builds/repo.json 
           
           # 3. COMANDO DE CÓPIA ROBUSTO: 
-          # Procura .cs3 recursivamente em todo o diretório e copia para 'builds/'.
-          # O '|| true' garante que a etapa não falhe se a lista de arquivos estiver vazia.
           find . -type f -name "*.cs3" -exec cp {} builds/ \; || true
           
       # 5. CORREÇÃO CRÍTICA DE URL
       - name: Corrigir URLs do JSON para Remover '/builds/' (Resolve o 404/Invalid Request)
         run: |
-          # O comando sed substitui todas as ocorrências de '/builds/' por '/' dentro do JSON.
           sed -i 's/\/builds\//\//g' builds/repo.json
 
       # 6. DEPLOY CRÍTICO - Publica o conteúdo da pasta 'builds/'
