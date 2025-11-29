@@ -3,6 +3,7 @@ package com.SuperFlix
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.utils.newSubtitleFile
 
 class SuperFlixProvider : MainAPI() {
     override val mainUrl = "https://superflix.com.br"
