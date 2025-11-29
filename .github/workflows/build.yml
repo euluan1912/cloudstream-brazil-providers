@@ -1,17 +1,38 @@
-# Ação para gerar os arquivos (isso deve vir primeiro)
-- name: ...
-  # ... (suas etapas de compilação/cópia que geram repo.json e os .cs3 na pasta 'builds/')
-  # ...
+# Linha 1: O nome do seu workflow, que aparece no GitHub Actions
+name: CloudStream Providers CI/CD
 
-# --- Use ESTE bloco para o deploy ---
-- name: Deploy to GitHub Pages
-  uses: peaceiris/actions-gh-pages@v3
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    # Este é o ponto CRÍTICO: a pasta 'builds/' é onde o seu repo.json e os .cs3 estão.
-    # A ação peaceiris vai commitar o CONTEÚDO desta pasta para o branch gh-pages.
-    publish_dir: ./builds
-    # A mensagem que aparecerá no histórico de commits do branch gh-pages
-    commit_message: "Build: Automatic deployment of CloudStream providers"
-    # Você já está usando o branch gh-pages, mas é bom garantir:
-    publish_branch: gh-pages
+# Linha 4: Define o que dispara este workflow
+on:
+  push:
+    branches:
+      - main  # ou master, dependendo do seu branch principal
+  workflow_dispatch: # Permite disparar manualmente
+
+# Linha 11: Onde os jobs (trabalhos) são definidos
+jobs:
+  build_and_deploy:
+    # O tipo de máquina que vai rodar o job
+    runs-on: ubuntu-latest
+    
+    # As etapas (steps) que o job vai executar
+    steps:
+      # Etapa 1: Faz o checkout do código do repositório
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Etapa 2: A sua lógica de compilação/unzip (Onde o 'repo.json' é gerado)
+      - name: Compile or Unzip Providers # Adapte esta linha para sua lógica exata
+        # Aqui você colocaria o seu unzip ou o comando de build que gera os arquivos
+        run: |
+          # Exemplo: Seu comando de unzip que gera os arquivos na pasta 'builds/'
+          unzip -o euluan-repo.zip -d builds/
+
+      # Etapa 3: O bloco de deploy que havíamos corrigido para publicar a pasta 'builds/'
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # CRÍTICO: Aponta para a pasta onde os arquivos foram criados
+          publish_dir: ./builds 
+          commit_message: "Build: Automatic deployment of CloudStream providers"
+          publish_branch: gh-pages
