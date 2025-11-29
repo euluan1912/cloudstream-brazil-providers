@@ -36,10 +36,10 @@ jobs:
       - name: Generate plugins.json at correct path
         run: ./gradlew makePluginsJson -PoutputFile="build/plugins.json"
 
-      # 4. CRIAÇÃO DA ESTRUTURA FINAL E CORREÇÃO DE URL (RESOLVE O 404)
+      # 4. CRIAÇÃO DA ESTRUTURA FINAL E CORREÇÃO DE URL (RESOLVE O 404 DO .cs3/.jar)
       - name: Mover, Corrigir URLs Internas e Criar repo.json principal
         run: |
-          # Define a base da URL para o repositório RAW do GitHub
+          # Define a base da URL correta para o repositório RAW do GitHub
           REPO_BASE_URL="https://raw.githubusercontent.com/${{ github.repository }}/main/builds"
           PLUGINS_LIST="[\"$REPO_BASE_URL/plugins.json\"]"
 
@@ -49,15 +49,19 @@ jobs:
           # 2. Move o manifesto de plugins para a pasta builds/
           mv build/plugins.json builds/plugins.json 
           
-          # 3. CRÍTICO PARA O 404: Substitui o caminho temporário gerado pelo Gradle
-          # (Ex: "file:///builds/file.cs3") pela URL RAW completa do GitHub.
-          # O \/ é o separador do SED.
-          # Este passo é crucial para o CloudStream encontrar os arquivos .cs3 e .jar.
-          sed -i 's|"url": "[^"]*NetCine[^"]*\.cs3"|"url": "'"$REPO_BASE_URL"'/NetCine.cs3"|g' builds/plugins.json
-          # Exemplo de correção de URL para plugins.json (aplique a todos os seus provedores se houver mais)
-          # sed -i 's|"url": "[^"]*<NOME_DO_PROVEDOR>[^"]*\.cs3"|"url": "'"$REPO_BASE_URL"'/<NOME_DO_PROVEDOR>.cs3"|g' builds/plugins.json
+          # 3. CRÍTICO PARA O 404: ESCAPA a URL de base para uso no comando SED
+          # Isso é necessário porque a URL contém barras (/).
+          REPO_BASE_URL_ESCAPED=$(echo $REPO_BASE_URL | sed 's/\//\\\//g')
           
-          # 4. CRIA o manifesto principal (repo.json) usando 'echo' e variáveis. (Correção YAML)
+          # 4. CRÍTICO PARA O 404: Substitui a URL do .cs3 no plugins.json
+          # O SED captura o nome do arquivo (ex: AnimeFHD) e substitui o caminho inteiro pela URL RAW correta.
+          sed -i 's|"url": "[^"]*\([a-zA-Z0-9]\+\)\.cs3"|"url": "'"$REPO_BASE_URL_ESCAPED"'/\1.cs3"|g' builds/plugins.json
+          
+          # 5. CRÍTICO PARA O 404: Substitui a URL do .jar no plugins.json
+          # Repete o processo para o arquivo .jar (JarUrl).
+          sed -i 's|"jarUrl": "[^"]*\([a-zA-Z0-9]\+\)\.jar"|"jarUrl": "'"$REPO_BASE_URL_ESCAPED"'/\1.jar"|g' builds/plugins.json
+
+          # 6. CRIA o manifesto principal (repo.json)
           echo "{
             \"name\": \"CloudStream Brasil Repo\",
             \"description\": \"Repositório Brasileiro de Provedores CloudStream\",
@@ -65,7 +69,7 @@ jobs:
             \"pluginLists\": $PLUGINS_LIST
           }" > builds/repo.json
           
-          # 5. COPIA os arquivos .cs3 e .jar para a pasta builds/
+          # 7. COPIA os arquivos .cs3 e .jar para a pasta builds/
           find . -type f -name "*.cs3" -exec cp {} builds/ \; || true
           find . -type f -name "*.jar" -exec cp {} builds/ \; || true
           
