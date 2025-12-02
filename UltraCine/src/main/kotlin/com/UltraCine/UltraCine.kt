@@ -1,12 +1,11 @@
 package com.UltraCine
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.* // toScore() deve ser importado por aqui.
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.Actor
-// CORREÇÃO: Força a importação da função de extensão toScore
-import com.lagradost.cloudstream3.APIHolder.toScore 
+// LINHA INCORRETA REMOVIDA: import com.lagradost.cloudstream3.APIHolder.toScore 
 import org.jsoup.nodes.Element
 import kotlin.math.roundToInt 
 
@@ -120,7 +119,7 @@ class UltraCine : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
-                // CORREÇÃO: Usando a função de extensão toScore()
+                // O uso de toScore() está correto, dependendo da importação de utils.*
                 this.score = rating?.times(10)?.roundToInt()?.toScore()
                 this.tags = genres
                 if (actors != null) addActors(actors)
@@ -131,7 +130,7 @@ class UltraCine : MainAPI() {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
-                // CORREÇÃO: Usando a função de extensão toScore()
+                // O uso de toScore() está correto, dependendo da importação de utils.*
                 this.score = rating?.times(10)?.roundToInt()?.toScore()
                 this.tags = genres
                 this.duration = parseDuration(duration)
@@ -161,7 +160,6 @@ class UltraCine : MainAPI() {
                         episodeTitle
                     }
                     
-                    // CORREÇÃO ANTERIOR (formato lambda) que resolveu os erros de newEpisode:
                     newEpisode(episodeId) {
                         name = cleanTitle
                         season = seasonNumber
