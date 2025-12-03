@@ -1,4 +1,4 @@
-Name: Build Cloudstream Providers
+name: Build Cloudstream Providers
 
 on:
   push:
