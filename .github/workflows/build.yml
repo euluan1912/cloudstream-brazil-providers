@@ -1,4 +1,4 @@
-name: Build Cloudstream Providers
+Name: Build Cloudstream Providers
 
 on:
   push:
@@ -26,23 +26,12 @@ jobs:
                   distribution: 'temurin'
                   cache: 'gradle'
 
-            # ... (Etapas 1 e 2 de Setup)
-
             - name: Grant execute permission for gradlew
               run: chmod +x gradlew
 
-            # 💣 PONTO DE MUDANÇA: Use assembleDebug com --stacktrace 
-            - name: Build with Gradle (Debug com Stacktrace para ver erros)
-              run: ./gradlew assembleDebug --stacktrace --refresh-dependencies --info
-
-            # 3. GERAÇÃO DO MANIFESTO DE PROVEDORES (Mude para makePluginsJsonDebug, se necessário)
-            # Como a tarefa makePluginsJson geralmente depende da compilação,
-            # é melhor deixar o comando makePluginsJson inalterado por enquanto.
-            - name: Generate plugins.json at correct path
-              run: ./gradlew makePluginsJson -PoutputFile="build/plugins.json"
-              
-# ... (Restante do Workflow)
-
+            # ⚠️ LINHA CORRIGIDA: Adicionado --stacktrace para debugging ⚠️
+            - name: Build with Gradle (Cria os .cs3 e .jar com Stacktrace)
+              run: ./gradlew assemble --refresh-dependencies --info --stacktrace
 
             # 3. GERAÇÃO DO MANIFESTO DE PROVEDORES
             - name: Generate plugins.json at correct path
