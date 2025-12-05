@@ -267,6 +267,7 @@ class UltraCine : MainAPI() {
             qualityStr?.contains("1080p", ignoreCase = true) == true -> Qualities.P1080.value
             qualityStr?.contains("720p", ignoreCase = true) == true -> Qualities.P720.value
             qualityStr?.contains("480p", ignoreCase = true) == true -> Qualities.P480.value
+            else -> Qualities.Unknown.value
         }
     }
 }
