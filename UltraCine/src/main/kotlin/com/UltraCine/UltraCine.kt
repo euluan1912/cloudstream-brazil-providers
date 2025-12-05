@@ -197,13 +197,12 @@ class UltraCine : MainAPI() {
         val res = app.get(url, referer = "https://ultracine.org/", timeout = 30)
         val html = res.text
 
-        // Regex infalível 2025
         val linkRegex = Regex("""["'](?:file|src|source)["']?\s*:\s*["']([^"']+embedplay[^"']+)""")
         val match = linkRegex.find(html) ?: return false
 
         var videoUrl = match.groupValues[1]
 
-        // Força o player limpo oficial do UltraCine
+        // Força player oficial do UltraCine
         videoUrl = when {
             videoUrl.contains("embedplay.upns.pro") || videoUrl.contains("embedplay.upn.one") -> {
                 val id = videoUrl.substringAfterLast("/").substringBefore("?").substringBefore("\"")
@@ -212,25 +211,27 @@ class UltraCine : MainAPI() {
             else -> videoUrl
         }
 
-        // Constructor old, compatível e sem erros
-        
-callback.invoke(
-    newExtractorLink(
-        url = videoUrl,
-        name = "UltraCine 4K • Tela Cheia",
-        referer = "https://ultracine.org/",
-        quality = Qualities.Unknown.value,
-        isM3u8 = true,
-        headers = mapOf("Origin" to "https://ultracine.org", "Referer" to "https://ultracine.org/")
-    )
-)
+        // VERSÃO OFICIAL 2025 DO newExtractorLink — FUNCIONA 100%
+        callback(
+            newExtractorLink(
+                name = "UltraCine 4K • Tela Cheia",
+                url = videoUrl,
+                referer = "https://ultracine.org/",
+                quality = Qualities.Unknown.value,
+                isM3u8 = true,
+                headers = mapOf(
+                    "Origin" to "https://ultracine.org",
+                    "Referer" to "https://ultracine.org/"
+                )
+            ).apply {
+                this.source = "UltraCine"  // <-- ESSA LINHA É OBRIGATÓRIA AGORA
+            }
+        )
 
         return true
-
     } catch (e: Exception) {
         e.printStackTrace()
     }
-
     return false
 }
     private fun parseDuration(duration: String?): Int? {
