@@ -21,15 +21,6 @@ Just like him, my goal is to expand the availability of free content by indexing
 
 ---
 
-<h3 align="left">Connect with me:</h3>
-<p align="left">
-<a href="https://discord.gg/yK2bTH4dDm" target="blank">
-<img align="center" src="https://raw.githubusercontent.com/rahuldkjain/github-profile-readme-generator/master/src/images/icons/Social/discord.svg" alt="discord" height="30" width="40" />
-</a>
-</p>
-
----
-
 <h3 align="left">Languages and Tools:</h3>
 <p align="left">
 <a href="https://developer.android.com" target="_blank" rel="noreferrer">
