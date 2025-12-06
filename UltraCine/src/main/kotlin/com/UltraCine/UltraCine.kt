@@ -95,10 +95,10 @@ class UltraCine : MainAPI() {
 
         val isTvSeries = url.contains("/serie/") || doc.select("div.seasons").isNotEmpty()
 
-        return if (isTvSeries && playerIframe != null) {
+        return if (isTvSeries && playerLinkToUse != null) {
             val episodes = mutableListOf<Episode>()
             try {
-                val iframeDoc = app.get(playerIframe).document
+                val iframeDoc = app.get(playerLinkToUse).document
                 iframeDoc.select("li[data-episode-id]").forEach { ep ->
                     val epId = ep.attr("data-episode-id")
                     val name = ep.text().trim()
@@ -126,7 +126,7 @@ class UltraCine : MainAPI() {
                 trailer?.let { addTrailer(it) }
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, playerIframe ?: url) {
+            newMovieLoadResponse(title, url, TvType.Movie, playerLinkToUse ?: url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
