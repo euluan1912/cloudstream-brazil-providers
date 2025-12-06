@@ -106,7 +106,7 @@ class UltraCine : MainAPI() {
                 this.tags = tags
                 this.recommendations = null
                 ratingText?.let { 
-                    this.rating = Rating(it * 10)  // Converte para Rating object
+                    this.score = Score(it, 10.0)  // Score(valor: Double, scale: Double = 10.0)
                 }
                 addActors(actors)
                 addTrailer(trailer)
@@ -119,7 +119,7 @@ class UltraCine : MainAPI() {
                 this.tags = tags
                 this.duration = durationText?.let { parseDuration(it) }
                 ratingText?.let { 
-                    this.rating = Rating(it * 10)  // Converte para Rating object
+                    this.score = Score(it, 10.0)  // Score(valor: Double, scale: Double = 10.0)
                 }
                 addActors(actors)
                 addTrailer(trailer)
@@ -202,7 +202,6 @@ class UltraCine : MainAPI() {
                 }
             }
 
-            // Se não encontrar nada
             false
         } catch (e: Exception) {
             e.printStackTrace()
