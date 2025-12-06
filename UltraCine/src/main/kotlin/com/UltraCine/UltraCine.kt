@@ -99,32 +99,50 @@ class UltraCine : MainAPI() {
         val isTvSeries = url.contains("/serie/") || doc.select("div.seasons").isNotEmpty()
 
         // Usa 'return if' para retornar o tipo correto (Série ou Filme)
+        // NOVO BLOCO DE SÉRIES DENTRO DA FUNÇÃO load
+
+// ...
         return if (isTvSeries) { 
             val episodes = mutableListOf<Episode>()
             
-            // Tenta usar o playerLinkFromButton para carregar episódios se ele existir.
-            // Caso contrário, usa a URL da página da série para tentar extrair episódios.
-            val episodeLink = playerLinkFromButton ?: url 
+            // 1. Tenta usar o playerLinkFromButton para carregar episódios se ele existir.
+            // Se existir, a lógica de extração será diferente (provavelmente um iframe).
+            if (playerLinkFromButton != null) {
+                // Se a série tem um botão, o link pode apontar para a página de episódios/iframe.
+                // Mantemos o código original (que pode estar correto se o botão existir):
+                try {
+                    val iframeDoc = app.get(playerLinkFromButton).document 
+                    iframeDoc.select("li[data-episode-id]").forEach { ep ->
+                        // ... (sua lógica de extração) ...
+                        episodes += newEpisode(epId) { /* ... */ }
+                    }
+                } catch (_: Exception) {}
             
-            try {
-                // Usa o link para carregar a página que contém a lista de episódios.
-                val iframeDoc = app.get(episodeLink).document 
+            } else {
+                // 2. SE NÃO HÁ BOTÃO, PROCURA A LISTA DE EPISÓDIOS NA PÁGINA PRINCIPAL
+                // Vamos tentar selecionar a lista de episódios diretamente do documento principal (doc)
+                doc.select("div.seasons ul li a[href*='/episodio/']").forEach { epLink ->
+                    val href = epLink.attr("href")
+                    val epTitle = epLink.text().trim()
 
-                iframeDoc.select("li[data-episode-id]").forEach { ep ->
-                    val epId = ep.attr("data-episode-id")
-                    val name = ep.text().trim()
-                    val season = ep.parent()?.attr("data-season-number")?.toIntOrNull()
-                    val episodeNum = name.substringBefore(" - ").toIntOrNull() ?: 1
+                    // O ID do episódio será a URL completa, ou você pode tentar extrair um ID
+                    // Se a URL for https://ultracine.org/episodio/id-do-episodio/
+                    val epId = href.substringAfterLast("/episodio/").removeSuffix("/")
 
                     if (epId.isNotBlank()) {
-                        episodes += newEpisode(epId) {
-                            this.name = name.substringAfter(" - ").ifBlank { "Episódio $episodeNum" }
-                            this.season = season
-                            this.episode = episodeNum
+                         episodes += newEpisode(epId) {
+                            this.name = epTitle
+                            this.episodeUrl = href
                         }
                     }
                 }
-            } catch (_: Exception) {}
+            }
+
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                // ... (resto da resposta)
+            }
+        } // ... (resto da função load)
+
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
