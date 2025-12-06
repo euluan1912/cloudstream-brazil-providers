@@ -74,12 +74,11 @@ class UltraCine : MainAPI() {
         val durationText = doc.selectFirst("span.duration")?.text().orEmpty()
         val duration = parseDuration(durationText)
 
-        // rating vem como "8.5" → transformamos em 8500 (0-10000)
+        // 8.5 → 8500
         val rating = doc.selectFirst("div.vote span.num, .rating span")?.text()
             ?.toDoubleOrNull()?.times(1000)?.toInt()
 
         val plot = doc.selectFirst("div.description p, .sinopse")?.text()
-
         val tags = doc.select("span.genres a, .category a").map { it.text() }
 
         val actors = doc.select("ul.cast-lst a").mapNotNull {
@@ -120,7 +119,7 @@ class UltraCine : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.rating = rating
+                this.score = rating                              // ← NOVO
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
@@ -131,7 +130,7 @@ class UltraCine : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.duration = duration
-                this.rating = rating
+                this.score = rating                               // ← NOVO
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
@@ -151,7 +150,7 @@ class UltraCine : MainAPI() {
         try {
             val doc = app.get(link, referer = mainUrl).document
 
-            // Botões embedplay
+            // botões embedplay
             doc.select("button[data-source]").forEach {
                 val src = it.attr("data-source")
                 if (src.isNotBlank()) {
@@ -168,18 +167,19 @@ class UltraCine : MainAPI() {
                 }
             }
 
-            // iframes normais
+            // iframes comuns
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank() && src.startsWith("http")) {
                     callback(
                         ExtractorLink(
-                        source = name,
-                        name = name,
-                        url = src,
-                        referer = link,
-                        quality = Qualities.Unknown.value,
-                        type = ExtractorLinkType.VIDEO
+                            source = name,
+                            name = name,
+                            url = src,
+                            referer = link,
+                            quality = Qualities.Unknown.value,
+                            type = ExtractorLinkType.VIDEO
+                        )
                     )
                 }
             }
