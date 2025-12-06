@@ -141,7 +141,7 @@ class UltraCine : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 // CORREÇÃO: Usa 'Score(it, null)' que é o construtor público.
-                this.score = ratingInt?.let { Score(it, null) } 
+                this.score = null
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
@@ -154,7 +154,7 @@ class UltraCine : MainAPI() {
                 this.tags = tags
                 this.duration = duration
                 // CORREÇÃO: Usa 'Score(it, null)' que é o construtor público.
-                this.score = ratingInt?.let { Score(it, null) } 
+                this.score = null 
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
