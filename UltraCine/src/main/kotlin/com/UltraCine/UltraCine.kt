@@ -141,7 +141,7 @@ class UltraCine : MainAPI() {
                 // CORREÇÃO: Usa o construtor público Score(it, null)
                 this.score = null
                 this.tags = genres
-                this.duration = parseDuration(durationText) // Usa durationText
+                this.duration = parseDuration(durationText.orEmpty()) // Usa durationText
                 addActors(actors)
                 trailerUrl?.let { addTrailer(it) } // Usa trailerUrl em vez de trailer
             }
