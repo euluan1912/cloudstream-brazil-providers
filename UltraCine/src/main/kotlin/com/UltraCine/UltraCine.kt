@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
-import com.lagradost.cloudstream3.utils.intToScore
 
 class UltraCine : MainAPI() {
     override var mainUrl = "https://ultracine.org"
@@ -120,7 +119,7 @@ class UltraCine : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.score = ratingInt?.let { intToScore(it) }          // ← CORRETO
+                this.score = ratingInt?.let { Score(it) }          // ← CORRETO
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
@@ -131,7 +130,7 @@ class UltraCine : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.duration = duration
-                this.score = ratingInt?.let { intToScore(it) }         // ← CORRETO
+                this.score = ratingInt?.let { Score(it) }        // ← CORRETO
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
