@@ -44,7 +44,7 @@ class UltraCine : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val titleEl = selectFirst("h2.entry-title, h3") ?: return null
         val href = selectFirst("a.lnk-blk")?.attr("href") ?: return null
-        val poster = selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank().not() }
+        val poster = selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank() }
             ?: selectFirst("img")?.attr("data-src")
 
         val year = selectFirst("span.year")?.text()?.toIntOrNull()
@@ -56,7 +56,7 @@ class UltraCine : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "\( mainUrl/?s= \){URLEncoder.encode(query, "UTF-8")}"
+        val url = "\( mainUrl/?s= \){java.net.URLEncoder.encode(query, "UTF-8")}"
         val doc = app.get(url).document
         return doc.select("div.aa-cn ul.post-lst li").mapNotNull { it.toSearchResult() }
     }
@@ -65,18 +65,18 @@ class UltraCine : MainAPI() {
         val doc = app.get(url).document
 
         val title = doc.selectFirst("h1.entry-title")?.text() ?: return null
-        val poster = doc.selectFirst("div.bghd img, img.TPostBg")?.attr("src")
-            ?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
+        val poster = doc.selectFirst("div.bghd img, img.TPostBg")
+            ?.attr("src")?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
 
-        val yearText = doc.selectFirst("span.year")?.text()
-        val year = yearText?.replace(Regex("\\D"), "")?.toIntOrNull()
+        val year = doc.selectFirst("span.year")?.text()
+            ?.replace(Regex("\\D"), "")?.toIntOrNull()
 
         val durationText = doc.selectFirst("span.duration")?.text().orEmpty()
         val duration = parseDuration(durationText)
 
-        val ratingText = doc.selectFirst("div.vote span.num, .rating span")?.text()
-        // ex: "8.5"
-        val rating = ratingText?.toDoubleOrNull()?.times(1000)?.toInt()                     // 8500
+        // rating vem como "8.5" → transformamos em 8500 (0-10000)
+        val rating = doc.selectFirst("div.vote span.num, .rating span")?.text()
+            ?.toDoubleOrNull()?.times(1000)?.toInt()
 
         val plot = doc.selectFirst("div.description p, .sinopse")?.text()
 
@@ -84,19 +84,18 @@ class UltraCine : MainAPI() {
 
         val actors = doc.select("ul.cast-lst a").mapNotNull {
             val name = it.text().trim()
-            val image = it.selectFirst("img")?.attr("src")
-            if (name.isNotBlank()) Actor(name, image) else null
+            val img = it.selectFirst("img")?.attr("src")
+            if (name.isNotBlank()) Actor(name, img) else null
         }
 
         val trailer = doc.selectFirst("div.video iframe, iframe[src*=youtube]")?.attr("src")
 
-        val playerIframe = doc.selectFirst("iframe[src*='assistirseriesonline'], iframe[src*='embed']")
+        val playerIframe = doc.selectFirst("iframe[src*='assistirseriesonline'], iframe[src*='embedplay']")
             ?.attr("src")?.takeIf { it.isNotBlank() }
 
         val isTvSeries = url.contains("/serie/") || doc.select("div.seasons").isNotEmpty()
 
         return if (isTvSeries && playerIframe != null) {
-            // Série → vamos pegar episódios
             val episodes = mutableListOf<Episode>()
             try {
                 val iframeDoc = app.get(playerIframe).document
@@ -104,15 +103,14 @@ class UltraCine : MainAPI() {
                     val epId = ep.attr("data-episode-id")
                     val name = ep.text().trim()
                     val season = ep.parent()?.attr("data-season-number")?.toIntOrNull()
-                    val episode = name.substringBefore(" - ").toIntOrNull() ?: 1
+                    val episodeNum = name.substringBefore(" - ").toIntOrNull() ?: 1
 
                     if (epId.isNotBlank()) {
-                        episodes += Episode(
-                            data = epId,
-                            name = name.substringAfter(" - ").ifBlank { "Episódio $episode" },
-                            season = season,
-                            episode = episode
-                        )
+                        episodes += newEpisode(epId) {
+                            this.name = name.substringAfter(" - ").ifBlank { "Episódio $episodeNum" }
+                            this.season = season
+                            this.episode = episodeNum
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -122,19 +120,18 @@ class UltraCine : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
-                this.score = rating?.let { Score.of(it) }
+                this.rating = rating
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
         } else {
-            // Filme
             newMovieLoadResponse(title, url, TvType.Movie, playerIframe ?: url) {
                 this.posterUrl = poster
                 this.year = year
                 this.plot = plot
                 this.tags = tags
                 this.duration = duration
-                this.score = rating?.let { Score.of(it) }
+                this.rating = rating
                 addActors(actors)
                 trailer?.let { addTrailer(it) }
             }
@@ -147,21 +144,18 @@ class UltraCine : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data pode ser URL do iframe ou ID do episódio
         val link = if (data.matches(Regex("^\\d+$"))) {
             "https://assistirseriesonline.icu/episodio/$data/"
-        } else {
-            data
-        }
+        } else data
 
         try {
             val doc = app.get(link, referer = mainUrl).document
 
-            // 1. EmbedPlay direto
+            // Botões embedplay
             doc.select("button[data-source]").forEach {
                 val src = it.attr("data-source")
-                if (src.isNotBlank() && src.contains("embedplay")) {
-                    callback.invoke(
+                if (src.isNotBlank()) {
+                    callback(
                         ExtractorLink(
                             source = name,
                             name = "$name • 4K",
@@ -174,13 +168,12 @@ class UltraCine : MainAPI() {
                 }
             }
 
-            // 2. iframe dentro do player
+            // iframes normais
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
-                if (src.isBlank() || !src.startsWith("http")) return@forEach
-
-                callback.invoke(
-                    ExtractorLink(
+                if (src.isNotBlank() && src.startsWith("http")) {
+                    callback(
+                        ExtractorLink(
                         source = name,
                         name = name,
                         url = src,
@@ -188,11 +181,9 @@ class UltraCine : MainAPI() {
                         quality = Qualities.Unknown.value,
                         type = ExtractorLinkType.VIDEO
                     )
-                )
+                }
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
 
         return true
     }
