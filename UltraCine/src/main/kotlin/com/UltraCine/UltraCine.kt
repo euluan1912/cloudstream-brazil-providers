@@ -60,61 +60,120 @@ class UltraCine : MainAPI() {
         val doc = app.get(url).document
         return doc.select("div.aa-cn ul.post-lst li").mapNotNull { it.toSearchResult() }
     }
+// ... (dentro da classe UltraCine)
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc = app.get(url).document
+        val document = app.get(url).document
+        
+        // ... (Extração de metadados como title, poster, year, plot, tags, actors, trailerUrl permanece) ...
+        
+        val title = document.selectFirst("aside.fg1 header.entry-header h1.entry-title")?.text() ?: return null
+        // ... (variáveis poster, year, duration, rating, plot, genres, actors, trailerUrl) ...
 
-        val title = doc.selectFirst("h1.entry-title")?.text() ?: return null
-        val poster = doc.selectFirst("div.bghd img, img.TPostBg")
-            ?.attr("src")?.takeIf { it.isNotBlank() }?.let { fixUrl(it) }
-
-        val year = doc.selectFirst("span.year")?.text()
-            ?.replace(Regex("\\D"), "")?.toIntOrNull()
-
-        val durationText = doc.selectFirst("span.duration")?.text().orEmpty()
-        val duration = parseDuration(durationText)
-
-        // 8.5 → 8500
-        val ratingInt = doc.selectFirst("div.vote span.num, .rating span")?.text()
-            ?.toDoubleOrNull()?.times(1000)?.toInt()
-
-        val plot = doc.selectFirst("div.description p, .sinopse")?.text()
-        val tags = doc.select("span.genres a, .category a").map { it.text() }
-
-        val actors = doc.select("ul.cast-lst a").mapNotNull {
+        val duration = document.selectFirst("aside.fg1 header.entry-header div.entry-meta span.duration")?.text()?.substringAfter("far\">")
+        val rating = document.selectFirst("div.vote-cn span.vote span.num")?.text()?.toDoubleOrNull() // Mantido
+        
+        // CORREÇÃO: Usamos o seletor da versão nova, pois a versão antiga é muito específica
+        val actors = document.select("ul.cast-lst a").mapNotNull { 
             val name = it.text().trim()
             val img = it.selectFirst("img")?.attr("src")
             if (name.isNotBlank()) Actor(name, img) else null
         }
+        
+        val trailerUrl = document.selectFirst("div.mdl-cn div.video iframe")?.let { iframe ->
+            iframe.attr("src").takeIf { it.isNotBlank() } ?: iframe.attr("data-src")
+        }
 
-        val trailer = doc.selectFirst("div.video iframe, iframe[src*=youtube]")?.attr("src")
+        val iframeElement = document.selectFirst("iframe[src*='assistirseriesonline']")
+        val iframeUrl = iframeElement?.let { iframe ->
+            iframe.attr("src").takeIf { it.isNotBlank() } ?: iframe.attr("data-src")
+        }
 
-        // Extração do link do player do atributo data-source do botão
-        val playerLinkFromButton = doc.selectFirst("div#players button[data-source]")
-            ?.attr("data-source")?.takeIf { it.isNotBlank() }
+        val isSerie = url.contains("/serie/")
+        
+        return if (isSerie) {
+            if (iframeUrl != null) {
+                val iframeDocument = app.get(iframeUrl).document
+                val episodes = parseSeriesEpisodes(iframeDocument, iframeUrl)
+                
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = plot
+                    // CORREÇÃO DE TIPO DE DADO
+                    this.score = rating?.times(1000)?.toInt()?.let { Score(it, null) }
+                    this.tags = genres
+                    addActors(actors)
+                    addTrailer(trailerUrl)
+                }
+            } else {
+                // Caso não encontre o iframe do player, retorna sem episódios (Em Breve)
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
+                    this.posterUrl = poster
+                    this.year = year
+                    this.plot = plot
+                    // CORREÇÃO DE TIPO DE DADO
+                    this.score = rating?.times(1000)?.toInt()?.let { Score(it, null) }
+                    this.tags = genres
+                    addActors(actors)
+                    addTrailer(trailerUrl)
+                }
+            }
+        } else {
+            // Filmes
+            newMovieLoadResponse(title, url, TvType.Movie, iframeUrl ?: "") {
+                this.posterUrl = poster
+                this.year = year
+                this.plot = plot
+                // CORREÇÃO DE TIPO DE DADO
+                this.score = rating?.times(1000)?.toInt()?.let { Score(it, null) }
+                this.tags = genres
+                this.duration = parseDuration(duration)
+                addActors(actors)
+                addTrailer(trailerUrl)
+            }
+        }
+    }
 
-        // Detecção de séries
-        val isTvSeries = url.contains("/serie/") || doc.select("div.seasons").isNotEmpty()
+    // Função de extração de episódios copiada do código fornecido
+    private suspend fun parseSeriesEpisodes(iframeDocument: org.jsoup.nodes.Document, baseUrl: String): List<Episode> {
+        val episodes = mutableListOf<Episode>()
+        val seasons = iframeDocument.select("header.header ul.header-navigation li")
+        
+        for (seasonElement in seasons) {
+            val seasonNumber = seasonElement.attr("data-season-number").toIntOrNull() ?: continue
+            val seasonId = seasonElement.attr("data-season-id")
+            
+            val seasonEpisodes = iframeDocument.select("li[data-season-id='$seasonId']")
+                .mapNotNull { episodeElement ->
+                    val episodeId = episodeElement.attr("data-episode-id")
+                    val episodeTitle = episodeElement.selectFirst("a")?.text() ?: return@mapNotNull null
+                    
+                    val episodeNumber = episodeTitle.substringBefore(" - ").toIntOrNull() ?: 1
+                    val cleanTitle = if (episodeTitle.contains(" - ")) {
+                        episodeTitle.substringAfter(" - ")
+                    } else {
+                        episodeTitle
+                    }
+                    
+                    Episode(
+                        // CORREÇÃO: Passa o ID do episódio (que será usado no loadLinks)
+                        data = episodeId, 
+                        name = cleanTitle,
+                        season = seasonNumber,
+                        episode = episodeNumber
+                    )
+                }
+            
+            episodes.addAll(seasonEpisodes)
+        }
+        
+        return episodes
+    }
+    
+// ... (O restante da classe loadLinks e parseDuration vêm abaixo)
 
-        // Usa 'return if' para retornar o tipo correto (Série ou Filme)
-        return if (isTvSeries) { 
-            val episodes = mutableListOf<Episode>()
-
-            // 1. LÓGICA DE EXTRAÇÃO DE EPISÓDIOS
-            if (playerLinkFromButton != null) {
-                try {
-                    val iframeDoc = app.get(playerLinkFromButton).document 
-                    iframeDoc.select("li[data-episode-id]").forEach { ep ->
-                        val epId = ep.attr("data-episode-id")
-                        val name = ep.text().trim()
-                        val season = ep.parent()?.attr("data-season-number")?.toIntOrNull()
-                        val episodeNum = name.substringBefore(" - ").toIntOrNull() ?: 1
-
-                        if (epId.isNotBlank()) {
-                            episodes += newEpisode(epId) {
-                                this.name = name.substringAfter(" - ").ifBlank { "Episódio $episodeNum" }
-                                this.season = season
-                                this.episode = episodeNum
+    
                             }
                         }
                     }
