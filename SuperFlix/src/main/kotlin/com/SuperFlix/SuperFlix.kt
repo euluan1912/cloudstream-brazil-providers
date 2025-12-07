@@ -19,7 +19,7 @@ class SuperFlix : MainAPI() {
         TvType.TvSeries
     )
 
-    // Headers completos para simular o navegador
+    // Headers completos
     private val defaultHeaders = mapOf(
         "Referer" to mainUrl,
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -62,10 +62,13 @@ class SuperFlix : MainAPI() {
         val response = app.get(url, headers = defaultHeaders)
         val document = response.document
 
+        // Extração de resultados (CORRIGIDA E ESTÁVEL)
         val list = document.select("a.card").mapNotNull { element -> 
             val title = element.attr("title")
             val url = fixUrl(element.attr("href"))
-            val posterUrl = element.selectFirst("img.card-img")?.attr("src")?.let { fixUrl(it) }
+            
+            // REMOVIDO: val posterUrl = ...
+            // O valor é extraído diretamente no bloco newSearchResponse
 
             if (title.isNullOrEmpty() || url.isNullOrEmpty()) return@mapNotNull null
 
@@ -74,9 +77,9 @@ class SuperFlix : MainAPI() {
 
             val type = if (url.contains("/filme/")) TvType.Movie else TvType.TvSeries
 
-            // CORRIGIDO: Escopo e newSearchResponse
             newSearchResponse(cleanTitle, url, type) {
-                this.posterUrl = posterUrl
+                // CORREÇÃO FINAL: Extrai o poster URL aqui
+                this.posterUrl = element.selectFirst("img.card-img")?.attr("src")?.let { fixUrl(it) }
                 this.year = year
             }
         }
@@ -85,46 +88,38 @@ class SuperFlix : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-    val url = "\( mainUrl/?s= \){query.urlEncode()}"
-    val doc = app.get(url, headers = defaultHeaders).document
+        val url = "$mainUrl/?s=$query"
 
-    return doc.select("a.card, div.card, article, .post").mapNotNull { el ->
-        val title = el.selectFirst(".card-title, h2, h3, .title, a")?.text()?.trim()
-            ?: return@mapNotNull null
+        val response = app.get(url, headers = defaultHeaders)
+        val document = response.document 
 
-        val href = el.attr("href").takeIf { it.isNotBlank() }
-            ?: el.selectFirst("a")?.attr("href")
-            ?: return@mapNotNull null
+        // Extração de resultados (CORRIGIDA E ESTÁVEL)
+        val results = document.select("a.card, div.card").mapNotNull { element ->
 
-        // POSTER – várias formas que o SuperFlix usa (nunca mais vai dar erro)
-        val poster = el.selectFirst("img")?.attr("src")
-            ?: el.selectFirst("img")?.attr("data-src")
-            ?: el.selectFirst("img")?.attr("data-lazy-src")
-            ?: el.attr("style")?.let { Regex("""url\(['"]?([^'"]+)['"]?\)""").find(it)?.groupValues?.get(1) }
-            ?: return@mapNotNull null
+            val title = element.selectFirst(".card-title")?.text()?.trim() ?: return@mapNotNull null
+            // REMOVIDO: val posterUrl = ...
+            
+            val href = element.attr("href").ifEmpty { 
+                element.selectFirst("a")?.attr("href") 
+            } ?: return@mapNotNull null
 
-        val posterUrl = fixUrl(poster.trim())
+            val typeText = element.selectFirst(".card-meta")?.text()?.trim() ?: "Filme" 
+            val type = if (typeText.contains("Série", ignoreCase = true)) TvType.TvSeries else TvType.Movie
 
-        // Tipo (filme ou série)
-        val isSeries = el.text().contains("temporada", ignoreCase = true) ||
-                       el.text().contains("episódio", ignoreCase = true) ||
-                       el.text().contains("série", ignoreCase = true) ||
-                       el.text().contains("series", ignoreCase = true)
+            newSearchResponse(title, fixUrl(href), type) {
+                // CORREÇÃO FINAL: Extrai o poster URL aqui
+                this.posterUrl = element.selectFirst(".card-img")?.attr("src")?.let { fixUrl(it) }
+            }
+        }
 
-        val type = if (isSeries) TvType.TvSeries else TvType.Movie
+        if (results.isEmpty()) {
+            val errorHtml = document.html().take(150)
+            throw ErrorLoadingException("ERRO BUSCA: Nenhum resultado. HTML Recebido (150 chars): $errorHtml")
+        }
 
-        // VERSÃO ANTIGA E FUNCIONA EM TODA FORK:
-        SearchResponse(
-            name = title,
-            url = fixUrl(href),
-            apiName = this.name,
-            type = type,
-            posterUrl = posterUrl,
-            year = null,        // pode deixar null ou tentar extrair se quiser
-            id = null
-        )
+        return results
     }
-}
+
     override suspend fun load(url: String): LoadResponse {
         val response = app.get(url, headers = defaultHeaders) 
         val document = response.document
@@ -155,18 +150,17 @@ class SuperFlix : MainAPI() {
         // 3. TAGS/GÊNEROS
         val tags = document.select("a.chip").map { it.text().trim() }.filter { it.isNotEmpty() }
 
-        // 4. ELENCO (ATORES): Lógica final de isolamento por texto
-        val actorLinks = document.select("p, div").filter {
-            it.text().contains("Elenco", ignoreCase = true) 
-        }.flatMap { 
-            it.select("a") 
-        }.map { 
-            it.text().trim() 
-        }.filter { 
-            it.isNotEmpty() && it.length > 2 
-        }.distinct().toList()
+        // 4. ELENCO (ATORES): Usando a Estratégia de Exclusão (que compilava)
+        val allDivLinks = document.select("div a").map { it.text().trim() }
+        val chipTexts = tags.toSet() 
 
-        val actors = if (actorLinks.isNotEmpty()) actorLinks else emptyList()
+        val actors = allDivLinks
+            .filter { linkText -> linkText !in chipTexts } // Remove tags
+            .filter { linkText -> !linkText.contains("Assista sem anúncios") } // Remove propaganda
+            .filter { it.isNotEmpty() && it.length > 2 }   // Remove ruídos
+            .distinct() 
+            .take(15) 
+            .toList()
 
         // Outros campos
         val year = title.substringAfterLast("(").substringBeforeLast(")").toIntOrNull()
