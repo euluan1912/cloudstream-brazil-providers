@@ -96,53 +96,60 @@ class SuperFlix : MainAPI() {
         return document.select("a.card").mapNotNull { it.toSearchResponse() }
     }
 
-    override suspend fun load(url: String): LoadResponse {
-        // Usa headers para carregar a página de detalhes
-        val response = app.get(url, headers = defaultHeaders) 
-        val document = response.document
+    // DENTRO DA FUNÇÃO load(url: String)
 
-        val isMovie = url.contains("/filme/")
+override suspend fun load(url: String): LoadResponse {
+    // Usamos headers completos, pois isBrowser=true não funciona na sua API
+    val response = app.get(url, headers = defaultHeaders) 
+    val document = response.document
 
-        // Fallback no Título: Tenta o seletor específico, senão tenta h1 genérico
-        val title = document.selectFirst("h1.text-3xl")?.text()?.trim()
-            ?: document.selectFirst("h1")?.text()?.trim() 
-            // Se esta linha falhar, o site provavelmente está servindo uma página de erro/bloqueio.
-            ?: throw ErrorLoadingException("Título não encontrado. Verifique se o domínio foi alterado.")
-            
-        val posterUrl = document.selectFirst("div.poster img")?.attr("src")?.let { fixUrl(it) }
-        val plot = document.selectFirst("p.text-gray-400")?.text()?.trim()
-        val tags = document.select("a[href*=/genero/]").map { it.text().trim() }
-        val year = title.substringAfterLast("(").substringBeforeLast(")").toIntOrNull()
+    val isMovie = url.contains("/filme/")
 
-        val type = if (isMovie) TvType.Movie else TvType.TvSeries
+    // >>>>> INÍCIO DO CÓDIGO DE DIAGNÓSTICO <<<<<
+    val title = document.selectFirst("h1.text-3xl")?.text()?.trim()
+        ?: document.selectFirst("h1")?.text()?.trim() 
 
-        return if (isMovie) {
-            val embedUrl = getFembedUrl(document)
-            newMovieLoadResponse(title, url, type, embedUrl) {
-                this.posterUrl = posterUrl
-                this.plot = plot
-                this.tags = tags
-                this.year = year
-            }
-        } else {
-            val seasons = document.select("div#season-tabs button").mapIndexed { index, element ->
-                val seasonName = element.text().trim()
-                newEpisode(url) {
-                    name = seasonName
-                    season = index + 1
-                    episode = 1 
-                    data = url 
-                }
-            }
-            newTvSeriesLoadResponse(title, url, type, seasons) { 
-                this.posterUrl = posterUrl
-                this.plot = plot
-                this.tags = tags
-                this.year = year
+    if (title.isNullOrEmpty()) {
+        // Pega as primeiras 150 caracteres do HTML recebido
+        val errorHtml = document.html().take(150)
+        // Lança um erro que você verá no log do Cloudstream
+        throw ErrorLoadingException("ERRO: Título não encontrado! HTML Recebido (150 chars): $errorHtml")
+    }
+    // >>>>> FIM DO CÓDIGO DE DIAGNÓSTICO <<<<<
+        
+    val posterUrl = document.selectFirst("div.poster img")?.attr("src")?.let { fixUrl(it) }
+    val plot = document.selectFirst("p.text-gray-400")?.text()?.trim()
+    val tags = document.select("a[href*=/genero/]").map { it.text().trim() }
+    val year = title.substringAfterLast("(").substringBeforeLast(")").toIntOrNull()
+
+    val type = if (isMovie) TvType.Movie else TvType.TvSeries
+
+    return if (isMovie) {
+        val embedUrl = getFembedUrl(document)
+        newMovieLoadResponse(title, url, type, embedUrl) {
+            this.posterUrl = posterUrl
+            this.plot = plot
+            this.tags = tags
+            this.year = year
+        }
+    } else {
+        val seasons = document.select("div#season-tabs button").mapIndexed { index, element ->
+            val seasonName = element.text().trim()
+            newEpisode(url) {
+                name = seasonName
+                season = index + 1
+                episode = 1 
+                data = url 
             }
         }
+        newTvSeriesLoadResponse(title, url, type, seasons) { 
+            this.posterUrl = posterUrl
+            this.plot = plot
+            this.tags = tags
+            this.year = year
+        }
     }
-
+}
     override suspend fun loadLinks(
         data: String,
         isMovie: Boolean,
