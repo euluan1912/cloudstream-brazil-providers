@@ -89,34 +89,47 @@ class SuperFlix : MainAPI() {
     // DENTRO DO SEU SuperFlix.kt
 
 override suspend fun search(query: String): List<SearchResponse> {
+    // 1. Constrói a URL de busca
     val url = "$mainUrl/?s=$query"
-    // Usa headers completos
+    
+    // 2. Faz a requisição HTTP (mantendo os headers completos)
     val response = app.get(url, headers = defaultHeaders)
     val document = response.document 
 
-    // O seletor correto é o contêiner '.card' que também é um link (<a>)
-    // Se o elemento .card for um DIV, tentamos div.card
+    // 3. Seleciona e mapeia os resultados
+    // Busca por contêineres de resultado que são links (a.card) ou divs (div.card).
     val results = document.select("a.card, div.card").mapNotNull { element ->
-        // Dentro de cada card:
-        val title = element.selectFirst(".card-title")?.text()?.trim() ?: return@mapNotNull null
-        val posterUrl = element.selectFirst(".card-img")?.attr("src")?.let { fixUrl(it) } ?: return@mapNotNull null
-        val href = element.attr("href") ?: return@mapNotNull null
-        val typeText = element.selectFirst(".card-meta")?.text()?.trim() ?: "Filme" // Assume Filme se não tiver meta
-
-        // Determina o tipo:
-        val type = if (typeText.contains("Série", ignoreCase = true)) TvType.TvSeries else TvType.Movie
         
-        // Retorna o objeto SearchResponse
+        // 3a. Extração do Título (Seletor: .card-title)
+        val title = element.selectFirst(".card-title")?.text()?.trim() ?: return@mapNotNull null
+        
+        // 3b. Extração do Poster (Seletor: .card-img)
+        val posterUrl = element.selectFirst(".card-img")?.attr("src")?.let { fixUrl(it) } ?: return@mapNotNull null
+        
+        // 3c. Extração do Link (Href)
+        // O link deve estar na própria tag 'a.card'. Se for 'div.card', tentamos o primeiro link dentro.
+        val href = element.attr("href").ifEmpty { 
+            element.selectFirst("a")?.attr("href") 
+        } ?: return@mapNotNull null
+        
+        // 3d. Extração do Tipo (Seletor: .card-meta)
+        val typeText = element.selectFirst(".card-meta")?.text()?.trim() ?: "Filme" 
+
+        // 3e. Determina o TvType (Movie ou TvSeries)
+        val type = if (typeText.contains("Série", ignoreCase = true)) TvType.TvSeries else TvType.Movie
+
+        // 3f. Retorna o objeto SearchResponse
         newSearchResponse(title, fixUrl(href), type) {
+            // Usa 'this.' para atribuir a propriedade do objeto
             this.posterUrl = posterUrl
         }
     }
 
-    // Código de diagnóstico removido, pois encontramos os seletores
-    // Se a busca ainda falhar, o problema é de bloqueio, não de seletor.
-    
+    // 4. Diagnóstico de segurança (Removido o throw para evitar quebra, mas mantemos o retorno)
+    // Se a busca retornar vazia, o Cloudstream reportará "No search responses".
     return results
 }
+
 
 
                 override suspend fun load(url: String): LoadResponse {
