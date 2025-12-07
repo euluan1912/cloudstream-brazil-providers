@@ -248,24 +248,29 @@ class UltraCine : MainAPI() {
             }
             if (success) return true
 
-             // ========== 3. ESTRATÉGIA DE FALLBACK (WebViewResolver) ==========
-            // Eliminando a ambiguidade de tipo na condição IF.
-            // Linha 255 (aproximada no seu erro)
-            if (html.contains("apiblogger.click", ignoreCase = true) || finalUrl.contains("episodio/", ignoreCase = true)) {
-                
-                // Usamos a versão simples aqui (assumindo que a importação está no topo)
-                val resolver = WebViewResolver(html) 
-                
-                // O bloco resolveUsingWebView é a única forma correta de usar esta função
-                resolver.resolveUsingWebView(finalUrl) { link ->
-                    // O link é a String real do vídeo. 
-                    if (link.contains(".m3u8", ignoreCase = true) || link.contains(".mp4", ignoreCase = true)) {
-                        // Linha ~260 (Chamada estável de loadExtractor)
-                        loadExtractor(link, finalUrl, subtitleCallback, callback) 
-                    }
-                }
-                return true
-            }
+             // Linha ~252:
+// ========== 3. ESTRATÉGIA DE FALLBACK (WebViewResolver) ==========
+// Linha 255: Onde o erro de tipo começa
+if (html.contains("apiblogger.click", ignoreCase = true) || finalUrl.contains("episodio/", ignoreCase = true)) {
+    
+    // Linha 257 (A declaração do Resolver, que causa o erro em cascata)
+    val resolver = com.lagradost.cloudstream3.network.WebViewResolver(html) 
+    
+    // Chamada da função de resolução
+    resolver.resolveUsingWebView(finalUrl) { link: String? ->
+        // Forçamos a variável link a ser uma String válida (não nula) antes de usar
+        val resolvedLink = link ?: return@resolveUsingWebView
+
+        // Bloco de filtro para m3u8/mp4
+        // A sintaxe com 'ignoreCase = true' é a única forma estável
+        if (resolvedLink.contains(".m3u8", ignoreCase = true) || resolvedLink.contains(".mp4", ignoreCase = true)) {
+            // Linha ~264 (Chamada estável de loadExtractor)
+            loadExtractor(resolvedLink, finalUrl, subtitleCallback, callback) 
+        }
+    }
+    return true
+}
+
             return false
 
         } catch (e: Exception) {
