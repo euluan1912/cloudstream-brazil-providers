@@ -129,89 +129,43 @@ class UltraCine : MainAPI() {
         }
     }
 
-    // FUNÇÃO MELHORADA PARA EXTRAIR EPISÓDIOS
+    // FUNÇÃO SIMPLIFICADA PARA EXTRAIR EPISÓDIOS
     private fun parseSeriesEpisodes(doc: org.jsoup.nodes.Document): List<Episode> {
         val episodes = mutableListOf<Episode>()
-        
+
         println("=== ANALISANDO EPISÓDIOS ===")
-        
-        // 1. PRIMEIRO: Encontra o padrão base da série
-        // Procura por qualquer link que tenha o padrão /embed/NUMERO#NUMERO_NUMERO
-        val allLinks = doc.select("a[href*='/embed/']")
-        
-        var seriesId = "" // Ex: 615 (ID fixo da série)
-        var seasonId = "" // Ex: 13014 (ID da temporada)
-        var baseEpisodeId = 0L // Ex: 250521 (ID base do episódio 1)
-        
-        // Tenta encontrar o padrão nos links
-        for (link in allLinks) {
+
+        // Procura por links de episódios
+        doc.select("a[href*='/episodio/']").forEach { link ->
             val href = link.attr("href")
-            println("🔗 Link encontrado: $href")
+            val title = link.text().trim()
             
-            // Procura padrão: /embed/615#13014_250521
-            val pattern = Regex("""/embed/(\d+)#(\d+)_(\d+)""")
-            val match = pattern.find(href)
-            
-            if (match != null) {
-                seriesId = match.groupValues[1] // 615
-                seasonId = match.groupValues[2] // 13014
-                baseEpisodeId = match.groupValues[3].toLong() // 250521
-                println("🎯 Padrão encontrado!")
-                println("   Série ID: $seriesId")
-                println("   Temporada ID: $seasonId") 
-                println("   Episódio base ID: $baseEpisodeId")
-                break
+            if (title.isNotBlank() && href.isNotBlank()) {
+                println("🎬 Encontrado: $title -> $href")
+                
+                // Tenta extrair temporada e episódio do título
+                var season = 1
+                var episode = 1
+                
+                val seasonMatch = Regex("""T(\d+)""", RegexOption.IGNORE_CASE).find(title)
+                val episodeMatch = Regex("""E(\d+)""", RegexOption.IGNORE_CASE).find(title)
+                
+                season = seasonMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                episode = episodeMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                
+                episodes.add(
+                    Episode(
+                        data = href,
+                        name = title,
+                        season = season,
+                        episode = episode,
+                        posterUrl = null
+                    )
+                )
             }
         }
-        
-        if (seriesId.isBlank()) {
-            println("❌ Não encontrou padrão de IDs")
-            return emptyList()
-        }
-        
-        // 2. AGORA: Extrai todos os episódios da interface
-        doc.select("header.header ul.header-navigation li").forEach { seasonEl ->
-            val seasonNum = seasonEl.attr("data-season-number").toIntOrNull() ?: return@forEach
-            val seasonElId = seasonEl.attr("data-season-id")
-            
-            println("\n📺 TEMPORADA $seasonNum (ID: $seasonElId)")
-            
-            // Para cada temporada, precisa descobrir o seasonId correto
-            var currentSeasonId = seasonId
-            
-            // Se tem mais de uma temporada, ajusta o ID
-            // Temporada 1: 13014, Temporada 2: 13015, etc.
-            if (seasonNum > 1) {
-                // Incrementa o seasonId baseado no número da temporada
-                currentSeasonId = (seasonId.toInt() + (seasonNum - 1)).toString()
-                println("   🆔 Season ID ajustado: $currentSeasonId")
-            }
-            
-            doc.select("li[data-season-id='$seasonElId']").forEachIndexed { index, epEl ->
-                val epNum = index + 1
-                
-                // Calcula o episodeId: base + ((epNum - 1) * 2)
-                // Ep 1: 250521, Ep 2: 250523, Ep 3: 250525, etc.
-                val episodeId = (baseEpisodeId + ((epNum - 1) * 2)).toString()
-                
-                val title = epEl.selectFirst("a")?.text() ?: "Episódio $epNum"
-                val cleanTitle = title.substringAfter(" - ").takeIf { it.isNotEmpty() } ?: title
-                
-                // Cria o link do player: /embed/SERIES_ID#SEASON_ID_EPISODE_ID
-                val playerUrl = "https://assistirseriesonline.icu/embed/$seriesId#$currentSeasonId"_$episodeId"
-                
-                println("   ▶️ Ep $epNum: $cleanTitle")
-                println("      URL: $playerUrl")
-                
-                episodes.add(newEpisode(playerUrl) {
-                    this.name = cleanTitle
-                    this.season = seasonNum
-                    this.episode = epNum
-                })
-            }
-        }
-        
-        println("\n✅ Total de episódios extraídos: ${episodes.size}")
+
+        println("\n✅ Total de episódios encontrados: ${episodes.size}")
         return episodes
     }
 
@@ -228,7 +182,7 @@ class UltraCine : MainAPI() {
         }
     }
 
-    // VERSÃO SIMPLIFICADA DO loadLinks
+    // loadLinks CORRIGIDO para lidar com anúncios
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -241,124 +195,213 @@ class UltraCine : MainAPI() {
         if (data.isBlank()) return false
 
         return try {
-            // Se a data é uma URL do player (vem do parseSeriesEpisodes)
-            if (data.startsWith("https://assistirseriesonline.icu/embed/")) {
-                println("🎯 URL DO PLAYER DETECTADA: $data")
-                
-                // Simplesmente passa a URL para o extractor padrão
-                if (loadExtractor(data, data, subtitleCallback, callback)) {
-                    println("✅ Extractors carregados com sucesso!")
-                    return true
-                } else {
-                    println("❌ Nenhum extractor funcionou")
-                    
-                    // Fallback: tenta extrair diretamente da página
-                    return extractFromPlayerPage(data, callback)
-                }
+            // URL final a ser usada
+            val finalUrl = when {
+                data.startsWith("https://") -> data
+                data.startsWith("http://") -> data
+                else -> "https://assistirseriesonline.icu/episodio/$data"
             }
             
-            // PARA FILMES (mantém original)
-            val finalUrl = when {
-                data.contains("ultracine.org/") && data.matches(Regex(".*/\\d+$")) -> {
-                    val id = data.substringAfterLast("/")
-                    "https://assistirseriesonline.icu/episodio/$id"
-                }
-                else -> data
-            }
-
-            val res = app.get(finalUrl, referer = mainUrl, timeout = 30)
+            println("🔗 Acessando URL: $finalUrl")
+            
+            // PRIMEIRA TENTATIVA: Acesso direto com headers
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language" to "pt-BR,pt;q=0.9,en;q=0.8",
+                "Referer" to mainUrl,
+                "DNT" to "1",
+                "Connection" to "keep-alive",
+                "Upgrade-Insecure-Requests" to "1"
+            )
+            
+            val res = app.get(finalUrl, headers = headers, timeout = 60)
             val doc = res.document
             
-            // Tenta iframes
-            doc.select("iframe[src]").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank() && loadExtractor(src, finalUrl, subtitleCallback, callback)) {
-                    return true
-                }
-            }
+            // ANALISA A PÁGINA PARA ENCONTRAR O VÍDEO
+            return analyzePageForVideo(doc, finalUrl, callback)
             
-            false
         } catch (e: Exception) {
-            println("💥 ERRO: ${e.message}")
+            println("💥 ERRO no loadLinks: ${e.message}")
+            e.printStackTrace()
             false
         }
     }
     
-    // FUNÇÃO AUXILIAR PARA EXTRAIR DE PÁGINAS DE PLAYER
-    private suspend fun extractFromPlayerPage(playerUrl: String, callback: (ExtractorLink) -> Unit): Boolean {
-        return try {
-            println("🔍 Extraindo vídeo da página do player: $playerUrl")
+    // FUNÇÃO PARA ANALISAR A PÁGINA E ENCONTRAR O VÍDEO
+    private suspend fun analyzePageForVideo(
+        doc: org.jsoup.nodes.Document,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        println("🔍 Analisando página em busca de vídeo...")
+        
+        // ESTRATÉGIA 1: Procura por iframes
+        doc.select("iframe[src]").forEach { iframe ->
+            val src = iframe.attr("src")
+            println("🖼️ Iframe encontrado: $src")
             
-            val res = app.get(playerUrl, timeout = 30)
-            val html = res.text
-            
-            // Procura por iframes dentro do player
-            val iframePattern = Regex("""<iframe[^>]+src=["'](https?://[^"']+)["']""")
-            val iframeMatch = iframePattern.find(html)
-            
-            if (iframeMatch != null) {
-                val iframeSrc = iframeMatch.groupValues[1]
-                println("🎯 Iframe encontrado no player: $iframeSrc")
-                
-                // Cria um ExtractorLink simples
-                callback.invoke(
-                    ExtractorLink(
-                        this.name,
-                        "${this.name} (Player)",
-                        iframeSrc,
-                        playerUrl,
-                        Qualities.Unknown.value,
-                        false
-                    )
-                )
+            // Tenta extrair do iframe
+            if (tryExtractFromIframe(src, referer, callback)) {
                 return true
             }
+        }
+        
+        // ESTRATÉGIA 2: Procura por scripts com URLs de vídeo
+        doc.select("script").forEach { script ->
+            val scriptText = script.html()
             
-            // Procura por URLs de vídeo direto
+            // Procura por URLs de m3u8
+            val m3u8Matches = Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)""").findAll(scriptText).toList()
+            for (match in m3u8Matches) {
+                val m3u8Url = match.groupValues[1]
+                println("🎬 M3U8 encontrado no script: $m3u8Url")
+                
+                if (createExtractorLink(m3u8Url, referer, callback, true)) {
+                    return true
+                }
+            }
+            
+            // Procura por URLs de MP4
+            val mp4Matches = Regex("""(https?://[^"'\s]+\.mp4[^"'\s]*)""").findAll(scriptText).toList()
+            for (match in mp4Matches) {
+                val mp4Url = match.groupValues[1]
+                println("🎬 MP4 encontrado no script: $mp4Url")
+                
+                if (createExtractorLink(mp4Url, referer, callback, false)) {
+                    return true
+                }
+            }
+        }
+        
+        // ESTRATÉGIA 3: Procura por elementos de vídeo HTML5
+        doc.select("video source[src]").forEach { source ->
+            val videoUrl = source.attr("src")
+            println("🎬 Vídeo HTML5 encontrado: $videoUrl")
+            
+            if (createExtractorLink(videoUrl, referer, callback, videoUrl.contains(".m3u8"))) {
+                return true
+            }
+        }
+        
+        // ESTRATÉGIA 4: Procura por links que possam conter vídeo
+        doc.select("a[href*='.m3u8'], a[href*='.mp4']").forEach { link ->
+            val videoUrl = link.attr("href")
+            println("🔗 Link de vídeo encontrado: $videoUrl")
+            
+            if (createExtractorLink(videoUrl, referer, callback, videoUrl.contains(".m3u8"))) {
+                return true
+            }
+        }
+        
+        // ESTRATÉGIA 5: Tenta seguir redirecionamentos
+        val allLinks = doc.select("a[href]")
+        for (link in allLinks) {
+            val href = link.attr("href")
+            if (href.contains("player") || href.contains("video") || href.contains("embed")) {
+                println("🔄 Seguindo link suspeito: $href")
+                
+                try {
+                    val newRes = app.get(href, referer = referer, timeout = 30)
+                    val newDoc = newRes.document
+                    
+                    if (analyzePageForVideo(newDoc, href, callback)) {
+                        return true
+                    }
+                } catch (e: Exception) {
+                    println("❌ Erro ao seguir link: ${e.message}")
+                }
+            }
+        }
+        
+        println("❌ Nenhum vídeo encontrado na página")
+        return false
+    }
+    
+    // FUNÇÃO PARA TENTAR EXTRAIR DE UM IFRAME
+    private suspend fun tryExtractFromIframe(
+        iframeSrc: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        if (iframeSrc.isBlank()) return false
+        
+        println("🔍 Extraindo do iframe: $iframeSrc")
+        
+        try {
+            // Adiciona headers para evitar bloqueios
+            val headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer" to referer,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            )
+            
+            val res = app.get(iframeSrc, headers = headers, timeout = 30)
+            val html = res.text
+            
+            // Procura por URLs de vídeo
             val videoPatterns = listOf(
                 Regex("""(https?://[^"'\s]+\.m3u8[^"'\s]*)"""),
                 Regex("""(https?://[^"'\s]+\.mp4[^"'\s]*)"""),
-                Regex("""<video[^>]+src=["'](https?://[^"']+)["']""")
+                Regex("""['"]file['"]\s*:\s*['"](https?://[^"']+)['"]"""),
+                Regex("""['"]src['"]\s*:\s*['"](https?://[^"']+)['"]"""),
+                Regex("""<source[^>]+src=['"](https?://[^"']+)['"]""")
             )
             
             for (pattern in videoPatterns) {
-                val matches = pattern.findAll(html).toList()
-                for (match in matches) {
+                pattern.findAll(html).forEach { match ->
                     val videoUrl = match.groupValues[1]
                     if (videoUrl.isNotBlank() && 
-                        (videoUrl.contains(".m3u8") || videoUrl.contains(".mp4"))) {
-                        println("🎬 Vídeo direto encontrado: $videoUrl")
+                        (videoUrl.contains(".m3u8") || videoUrl.contains(".mp4") || videoUrl.contains(".mkv"))) {
                         
-                        callback.invoke(
-                            ExtractorLink(
-                                this.name,
-                                "${this.name} (Direct)",
-                                videoUrl,
-                                playerUrl,
-                                extractQualityFromUrl(videoUrl),
-                                videoUrl.contains(".m3u8")
-                            )
-                        )
-                        return true
+                        println("🎬 Vídeo encontrado no iframe: $videoUrl")
+                        
+                        return createExtractorLink(videoUrl, iframeSrc, callback, videoUrl.contains(".m3u8"))
                     }
                 }
             }
-            
-            false
         } catch (e: Exception) {
-            println("❌ Erro ao extrair do player: ${e.message}")
-            false
+            println("❌ Erro ao extrair do iframe: ${e.message}")
         }
+        
+        return false
     }
     
-    private fun extractQualityFromUrl(url: String): Int {
-        return when {
-            url.contains("360p", ignoreCase = true) -> 360
-            url.contains("480p", ignoreCase = true) -> 480
-            url.contains("720p", ignoreCase = true) -> 720
-            url.contains("1080p", ignoreCase = true) -> 1080
-            url.contains("2160p", ignoreCase = true) -> 2160
-            else -> Qualities.Unknown.value
+    // FUNÇÃO AUXILIAR PARA CRIAR EXTRACTOR LINK
+    private fun createExtractorLink(
+        url: String,
+        referer: String,
+        callback: (ExtractorLink) -> Unit,
+        isM3u8: Boolean
+    ): Boolean {
+        if (url.isBlank()) return false
+        
+        try {
+            val quality = when {
+                url.contains("360p") -> 360
+                url.contains("480p") -> 480
+                url.contains("720p") -> 720
+                url.contains("1080p") -> 1080
+                url.contains("2160p") -> 2160
+                else -> Qualities.Unknown.value
+            }
+            
+            callback.invoke(
+                newExtractorLink(
+                    source = this.name,
+                    name = "${this.name} (${if (isM3u8) "HLS" else "Direct"})",
+                    url = url,
+                    referer = referer,
+                    quality = quality,
+                    isM3u8 = isM3u8
+                )
+            )
+            
+            println("✅ ExtractorLink criado com sucesso!")
+            return true
+        } catch (e: Exception) {
+            println("❌ Erro ao criar ExtractorLink: ${e.message}")
+            return false
         }
     }
 }
