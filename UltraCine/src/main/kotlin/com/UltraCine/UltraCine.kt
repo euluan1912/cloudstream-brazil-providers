@@ -250,32 +250,30 @@ class UltraCine : MainAPI() {
 
              // Linha ~252:
 // ========== 3. ESTRATÉGIA DE FALLBACK (WebViewResolver) ==========
-// Linha ~252: matches com Regex explícito para evitar conflito String/Regex + ignoreCase
-if (html.matches(Regex("apiblogger\\.click", RegexOption.IGNORE_CASE)) || 
-    finalUrl.matches(Regex("episodio/", RegexOption.IGNORE_CASE))) {
-
+if (
+    "apiblogger.click".toRegex(RegexOption.IGNORE_CASE) in html ||   // forma correta e limpa
+    "episodio/".toRegex(RegexOption.IGNORE_CASE) in finalUrl
+) {
     val resolver = WebViewResolver(html)
 
-    // Chamada direta (não suspend, roda blocking no Cloudstream3 atual)
+    // resolveUsingWebView NÃO é suspend na versão atual do Cloudstream3
+    // pode ser chamada diretamente dentro de loadLinks (que é suspend)
     val (mainRequest, subRequests) = resolver.resolveUsingWebView(finalUrl)
 
-    // Processa mainRequest primeiro
-    mainRequest?.url?.toString()?.let { potentialLink ->
-        if (potentialLink.contains(".m3u8", ignoreCase = true) || 
-            potentialLink.contains(".mp4", ignoreCase = true)) {
-            loadExtractor(potentialLink, finalUrl, subtitleCallback, callback)
+    mainRequest?.url?.toString()?.let { link ->
+        if (link.contains(".m3u8", ignoreCase = true) || link.contains(".mp4", ignoreCase = true)) {
+            loadExtractor(link, finalUrl, subtitleCallback, callback)
         }
     }
 
-    // Depois, processa sub-requests (comum para redirects/embeds)
     subRequests.forEach { req ->
-        req.url?.toString()?.let { potentialLink ->
-            if (potentialLink.contains(".m3u8", ignoreCase = true) || 
-                potentialLink.contains(".mp4", ignoreCase = true)) {
-                loadExtractor(potentialLink, finalUrl, subtitleCallback, callback)
+        req.url?.toString()?.let { link ->
+            if (link.contains(".m3u8", ignoreCase = true) || link.contains(".mp4", ignoreCase = true)) {
+                loadExtractor(link, finalUrl, subtitleCallback, callback)
             }
         }
     }
+
     return true
 }
             return false
