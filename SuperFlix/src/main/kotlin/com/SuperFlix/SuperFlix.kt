@@ -86,15 +86,29 @@ class SuperFlix : MainAPI() {
         return newHomePageResponse(request.name, list, list.isNotEmpty())
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=$query"
-        // Usa headers para tentar evitar o bloqueio de pesquisa
-        val response = app.get(url, headers = defaultHeaders)
-                val document = response.document // Corrigido
+    // DENTRO DO SEU SuperFlix.kt
 
+override suspend fun search(query: String): List<SearchResponse> {
+    val url = "$mainUrl/?s=$query"
+    // Usa headers completos
+    val response = app.get(url, headers = defaultHeaders)
+    val document = response.document 
 
-        return document.select("a.card").mapNotNull { it.toSearchResponse() }
+    // Seleção original de resultados
+    val results = document.select("a.card").mapNotNull { it.toSearchResponse() }
+
+    // >>>>> CÓDIGO DE DIAGNÓSTICO <<<<<
+    if (results.isEmpty()) {
+        // Pega as primeiras 150 caracteres do HTML recebido
+        val errorHtml = document.html().take(150)
+        // Lança um erro que você verá no log do Cloudstream
+        throw ErrorLoadingException("ERRO BUSCA: Nenhum resultado. HTML Recebido (150 chars): $errorHtml")
     }
+    // >>>>> FIM DO CÓDIGO DE DIAGNÓSTICO <<<<<
+    
+    return results
+}
+
 
                 override suspend fun load(url: String): LoadResponse {
         val response = app.get(url, headers = defaultHeaders) 
