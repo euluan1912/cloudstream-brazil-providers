@@ -45,12 +45,11 @@ class UltraCine : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val title = selectFirst("header.entry-header h2.entry-title")?.text() ?: return null
         val href = selectFirst("a.lnk-blk")?.attr("href") ?: return null
-        val posterUrl = selectFirst("div.post-thumbnail figure img")?.attr("src")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { fixUrl(it).replace("/w500/", "/original/") }
-            ?: selectFirst("div.post-thumbnail figure img")?.attr("data-src")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { fixUrl(it).replace("/w500/", "/original/") }
+        val posterUrl = selectFirst("div.post-thumbnail figure img")?.attr("src")?.let { src ->
+            if (src.length > 0) fixUrl(src).replace("/w500/", "/original/") else null
+        } ?: selectFirst("div.post-thumbnail figure img")?.attr("data-src")?.let { dataSrc ->
+            if (dataSrc.length > 0) fixUrl(dataSrc).replace("/w500/", "/original/") else null
+        }
 
         val year = selectFirst("span.year")?.text()?.toIntOrNull()
 
@@ -69,23 +68,22 @@ class UltraCine : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
         val title = document.selectFirst("aside.fg1 header.entry-header h1.entry-title")?.text() ?: return null
-        val poster = document.selectFirst("div.bghd img.TPostBg")?.attr("src")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { fixUrl(it).replace("/w1280/", "/original/") }
-            ?: document.selectFirst("div.bghd img.TPostBg")?.attr("data-src")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { fixUrl(it).replace("/w1280/", "/original/") }
+        val poster = document.selectFirst("div.bghd img.TPostBg")?.attr("src")?.let { src ->
+            if (src.length > 0) fixUrl(src).replace("/w1280/", "/original/") else null
+        } ?: document.selectFirst("div.bghd img.TPostBg")?.attr("data-src")?.let { dataSrc ->
+            if (dataSrc.length > 0) fixUrl(dataSrc).replace("/w1280/", "/original/") else null
+        }
 
         val year = document.selectFirst("aside.fg1 header.entry-header div.entry-meta span.year")?.ownText()?.toIntOrNull()
         val durationText = document.selectFirst("aside.fg1 header.entry-header div.entry-meta span.duration")?.ownText()
         val plot = document.selectFirst("aside.fg1 div.description p")?.text()
         val tags = document.select("aside.fg1 header.entry-header div.entry-meta span.genres a").map { it.text() }
         val actors = document.select("aside.fg1 ul.cast-lst p a").map { Actor(it.text(), it.attr("href")) }
-        val trailer = document.selectFirst("div.mdl-cn div.video iframe")?.attr("src")
-            ?.takeIf { it.isNotBlank() } ?: document.selectFirst("div.mdl-cn div.video iframe")?.attr("data-src")
+        val trailer = document.selectFirst("div.mdl-cn div.video iframe")?.attr("src")?.takeIf { it.length > 0 }
+            ?: document.selectFirst("div.mdl-cn div.video iframe")?.attr("data-src")
 
-        val iframeUrl = document.selectFirst("iframe[src*='assistirseriesonline']")?.attr("src")
-            ?.takeIf { it.isNotBlank() } ?: document.selectFirst("iframe[src*='assistirseriesonline']")?.attr("data-src")
+        val iframeUrl = document.selectFirst("iframe[src*='assistirseriesonline']")?.attr("src")?.takeIf { it.length > 0 }
+            ?: document.selectFirst("iframe[src*='assistirseriesonline']")?.attr("data-src")
 
         val isSerie = url.contains("/serie/")
 
@@ -173,10 +171,10 @@ class UltraCine : MainAPI() {
 
             if (isEpisode) {
                 // WEBVIEW PARA EPISÓDIOS (pula ads e ativa JW Player)
-                WebViewResolver(res.text).resolveUsingWebView(res.url) { link ->
-                    if (link.isNotBlank() && 
+                WebViewResolver(html).resolveUsingWebView(finalUrl) { link ->
+                    if (link.length > 0 && 
                         (link.contains(".mp4") || link.contains(".m3u8") || link.contains("googlevideo.com")) &&
-                        link.indexOf("banner") == -1 && link.indexOf("ads") == -1
+                        !link.contains("banner") && !link.contains("ads")
                     ) {
                         val quality = when {
                             link.contains("360p") -> 360
@@ -186,14 +184,16 @@ class UltraCine : MainAPI() {
                             else -> Qualities.Unknown.value
                         }
 
-                        newExtractorLink(
-                            source = name,
-                            name = "\( name ( \){quality}p)",
-                            url = link,
-                            referer = finalUrl,
-                            quality = quality,
-                            isM3u8 = link.contains(".m3u8")
-                        ).let { callback(it) }
+                        callback(
+                            newExtractorLink(
+                                name,
+                                "\( name ( \){quality}p)",
+                                link,
+                                finalUrl,
+                                quality,
+                                link.contains(".m3u8")
+                            )
+                        )
                     }
                 }
                 delay(10000) // Tempo pra WebView simular skip + play
@@ -201,40 +201,45 @@ class UltraCine : MainAPI() {
             }
 
             // FILMES: REGEX RÁPIDO
-            Regex("""<video[^>]+class=["'][^"']*jw[^"']*["'][^>]+src=["'](https?://[^"']+\.mp4[^"']*)["']""")
-                .find(html)?.groupValues?.get(1)?.let { url ->
-                    if (url.indexOf("banner") == -1 && url.indexOf("ads") == -1) {
-                        val quality = when {
-                            url.contains("360p") -> 360
-                            url.contains("480p") -> 480
-                            url.contains("720p") -> 720
-                            url.contains("1080p") -> 1080
-                            else -> Qualities.Unknown.value
-                        }
-                        newExtractorLink(
-                            source = name,
-                            name = "\( name ( \){quality}p)",
-                            url = url,
-                            referer = finalUrl,
-                            quality = quality,
-                            isM3u8 = false
-                        ).let { callback(it) }
-                        return true
+            val jwRegex = Regex("""<video[^>]+class=["'][^"']*jw[^"']*["'][^>]+src=["'](https?://[^"']+\\.mp4[^"']*)["']""")
+            jwRegex.find(html)?.groupValues?.get(1)?.let { url ->
+                if (!url.contains("banner") && !url.contains("ads")) {
+                    val quality = when {
+                        url.contains("360p") -> 360
+                        url.contains("480p") -> 480
+                        url.contains("720p") -> 720
+                        url.contains("1080p") -> 1080
+                        else -> Qualities.Unknown.value
                     }
+                    callback(
+                        newExtractorLink(
+                            name,
+                            "\( name ( \){quality}p)",
+                            url,
+                            finalUrl,
+                            quality,
+                            false
+                        )
+                    )
+                    return true
                 }
+            }
 
             // MP4 genérico
-            Regex("""(https?://[^"']+\.mp4[^"']*)""").findAll(html).forEach { match ->
+            val mp4Regex = Regex("""(https?://[^"']+\\.mp4[^"']*)""")
+            mp4Regex.findAll(html).forEach { match ->
                 val url = match.value
-                if (url.length > 50 && url.indexOf("banner") == -1 && url.indexOf("ads") == -1) {
-                    newExtractorLink(
-                        source = name,
-                        name = name,
-                        url = url,
-                        referer = finalUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = false
-                    ).let { callback(it) }
+                if (url.length > 50 && !url.contains("banner") && !url.contains("ads")) {
+                    callback(
+                        newExtractorLink(
+                            name,
+                            name,
+                            url,
+                            finalUrl,
+                            Qualities.Unknown.value,
+                            false
+                        )
+                    )
                     return true
                 }
             }
@@ -242,7 +247,7 @@ class UltraCine : MainAPI() {
             // Iframes
             res.document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
-                if (src.isNotBlank() && loadExtractor(src, finalUrl, subtitleCallback, callback)) return true
+                if (src.length > 0 && loadExtractor(src, finalUrl, subtitleCallback, callback)) return true
             }
 
             return false
