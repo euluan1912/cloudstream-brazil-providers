@@ -167,23 +167,23 @@ class UltraCine : MainAPI() {
         }
     }
 
-    // FUNÇÃO AUXILIAR PARA CRIAR LINKS CORRETAMENTE (SUSPEND)
-    private suspend fun createSeriesExtractorLink(videoUrl: String, episodeUrl: String, name: String = "Série"): ExtractorLink {
+    // SOLUÇÃO SIMPLES: Voltar a usar ExtractorLink() com @Suppress
+    @Suppress("DEPRECATION")
+    private fun createSimpleExtractorLink(videoUrl: String, episodeUrl: String, name: String = "Série"): ExtractorLink {
         val quality = extractQualityFromUrl(videoUrl)
         val isM3u8 = videoUrl.contains(".m3u8")
         
-        return newExtractorLink(
-            source = this.name,
-            name = "${this.name} ($name)",
-            url = videoUrl
-        ) {
-            referer = episodeUrl
-            this.quality = quality
-            this.isM3u8 = isM3u8
-        }
+        return ExtractorLink(
+            this.name,
+            "${this.name} ($name)",
+            videoUrl,
+            episodeUrl,
+            quality,
+            isM3u8
+        )
     }
 
-    // VERSÃO DO loadLinks QUE USA newExtractorLink CORRETAMENTE
+    // VERSÃO DO loadLinks QUE COMPILA
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -220,8 +220,8 @@ class UltraCine : MainAPI() {
                     if (videoUrl != null) {
                         println("DEBUG: Vídeo extraído: $videoUrl")
                         
-                        // USA newExtractorLink CORRETAMENTE
-                        callback.invoke(createSeriesExtractorLink(videoUrl, episodeUrl, "Série"))
+                        // USA A VERSÃO SIMPLES QUE COMPILA
+                        callback.invoke(createSimpleExtractorLink(videoUrl, episodeUrl, "Série"))
                         return true
                     }
                 }
@@ -232,8 +232,8 @@ class UltraCine : MainAPI() {
                     println("DEBUG: URLs de vídeo encontradas: ${videoUrls.size}")
                     
                     videoUrls.forEach { videoUrl ->
-                        // USA newExtractorLink CORRETAMENTE
-                        callback.invoke(createSeriesExtractorLink(videoUrl, episodeUrl, "Direct"))
+                        // USA A VERSÃO SIMPLES QUE COMPILA
+                        callback.invoke(createSimpleExtractorLink(videoUrl, episodeUrl, "Direct"))
                     }
                     return true
                 }
