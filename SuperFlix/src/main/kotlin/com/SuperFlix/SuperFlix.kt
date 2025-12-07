@@ -96,73 +96,85 @@ class SuperFlix : MainAPI() {
         return document.select("a.card").mapNotNull { it.toSearchResponse() }
     }
 
-            override suspend fun load(url: String): LoadResponse {
-    // Usamos headers completos, pois isBrowser=true não funciona na sua API
-    val response = app.get(url, headers = defaultHeaders) 
-    val document = response.document
+                override suspend fun load(url: String): LoadResponse {
+        val response = app.get(url, headers = defaultHeaders) 
+        val document = response.document
 
-    val isMovie = url.contains("/filme/")
+        val isMovie = url.contains("/filme/")
 
-    // CORREÇÃO CRÍTICA 1: Título extraído do seletor ".title" ou da tag <title>
-    val dynamicTitle = document.selectFirst(".title")?.text()?.trim()
-    val title: String
-    
-    if (dynamicTitle.isNullOrEmpty()) {
-        val fullTitle = document.selectFirst("title")?.text()?.trim()
-            ?: throw ErrorLoadingException("Não foi possível extrair o título da tag <title>.")
+        // 1. TÍTULO (Mantido o método de extração que funcionou)
+        val dynamicTitle = document.selectFirst(".title")?.text()?.trim()
+        val title: String
+        
+        if (dynamicTitle.isNullOrEmpty()) {
+            val fullTitle = document.selectFirst("title")?.text()?.trim()
+                ?: throw ErrorLoadingException("Não foi possível extrair a tag <title>.")
 
-        // Limpa a string: Remove "Assistir" no início e "Grátis..." no fim.
-        title = fullTitle.substringAfter("Assistir").substringBefore("Grátis").trim()
-            .ifEmpty { fullTitle.substringBefore("Grátis").trim() } 
-    } else {
-        title = dynamicTitle
-    }
-    
-    // CORREÇÃO 2: Poster. O seletor ".poster" provavelmente está em uma tag <img>
-    val posterUrl = document.selectFirst(".poster img")?.attr("src")?.let { fixUrl(it) }
-        // Se .poster não tiver <img> dentro, tenta o próprio elemento .poster
-        ?: document.selectFirst(".poster")?.attr("src")?.let { fixUrl(it) }
-
-    // CORREÇÃO 3: Sinopse (Plot) usando o seletor ".syn"
-    val plot = document.selectFirst(".syn")?.text()?.trim()
-        ?: "Sinopse não encontrada." // Fallback caso o seletor não funcione
-
-    // Mantemos as tags e o ano
-    val tags = document.select("a[href*=/genero/]").map { it.text().trim() }
-    val year = title.substringAfterLast("(").substringBeforeLast(")").toIntOrNull()
-
-    // Extração de Atores: Seletor div é muito genérico. Usaremos um placeholder.
-    // Se você encontrar a classe correta, por exemplo: div.atores-list a
-    val actors = document.select(".actor").map { it.text().trim() } // Seletor placeholder
-    
-    val type = if (isMovie) TvType.Movie else TvType.TvSeries
-
-    return if (isMovie) {
-        val embedUrl = getFembedUrl(document)
-        newMovieLoadResponse(title, url, type, embedUrl) {
-            this.posterUrl = posterUrl
-            this.plot = plot
-            this.tags = tags
-            this.year = year
+            title = fullTitle.substringAfter("Assistir").substringBefore("Grátis").trim()
+                .ifEmpty { fullTitle.substringBefore("Grátis").trim() } 
+        } else {
+            title = dynamicTitle
         }
-    } else {
-        val seasons = document.select("div#season-tabs button").mapIndexed { index, element ->
-            val seasonName = element.text().trim()
-            newEpisode(url) {
-                name = seasonName
-                season = index + 1
-                episode = 1 
-                data = url 
+        
+        // 2. POSTER e SINOPSE (Mantidos os seletores que funcionaram)
+        val posterUrl = document.selectFirst(".poster img")?.attr("src")?.let { fixUrl(it) }
+            ?: document.selectFirst(".poster")?.attr("src")?.let { fixUrl(it) }
+
+        val plot = document.selectFirst(".syn")?.text()?.trim()
+            ?: "Sinopse não encontrada."
+        
+        // 3. TAGS/GÊNEROS (Seleção direta pela classe .chip)
+        val tags = document.select("a.chip").map { it.text().trim() }.filter { it.isNotEmpty() }
+
+        // 4. ELENCO (ATORES): Estratégia de EXCLUSÃO
+        
+        // A) Pega TODOS os links dentro de DIVs (Inclui Atores e potencialmente outros)
+        val allDivLinks = document.select("div a").map { it.text().trim() }
+        
+        // B) Pega TODOS os links que são Tags (a.chip)
+        val chipTexts = tags.toSet() 
+
+        // C) ATORES: Filtra a lista A, removendo tudo que está na lista B
+        // Usamos um filtro de tamanho para eliminar links vazios ou de 1 letra
+        val actors = allDivLinks
+            .filter { linkText -> linkText !in chipTexts } // Remove todos os textos que são tags
+            .filter { it.isNotEmpty() && it.length > 2 }   // Remove ruídos
+            .distinct() // Remove duplicatas
+
+        // Outros campos
+        val year = title.substringAfterLast("(").substringBeforeLast(")").toIntOrNull()
+        
+        val type = if (isMovie) TvType.Movie else TvType.TvSeries
+
+        return if (isMovie) {
+            val embedUrl = getFembedUrl(document)
+            newMovieLoadResponse(title, url, type, embedUrl) {
+                this.posterUrl = posterUrl
+                this.plot = plot
+                this.tags = tags
+                this.year = year
+                addActors(actors) // Adiciona atores
+            }
+        } else {
+            val seasons = document.select("div#season-tabs button").mapIndexed { index, element ->
+                val seasonName = element.text().trim()
+                newEpisode(url) {
+                    name = seasonName
+                    season = index + 1
+                    episode = 1 
+                    data = url 
+                }
+            }
+            newTvSeriesLoadResponse(title, url, type, seasons) { 
+                this.posterUrl = posterUrl
+                this.plot = plot
+                this.tags = tags
+                this.year = year
+                addActors(actors) // Adiciona atores
             }
         }
-        newTvSeriesLoadResponse(title, url, type, seasons) { 
-            this.posterUrl = posterUrl
-            this.plot = plot
-            this.tags = tags
-            this.year = year
-        }
     }
-}
+
 
 
 
