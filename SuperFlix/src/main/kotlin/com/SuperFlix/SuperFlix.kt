@@ -103,7 +103,7 @@ class SuperFlix : MainAPI() {
 
     // 6. load()
     override suspend fun load(url: String): LoadResponse {
-        val response = app.get(url)
+        val response = app.get(url, referer = mainUrl)
         val document = response.document
 
         val isMovie = url.contains("/filme/")
