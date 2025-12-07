@@ -145,12 +145,11 @@ class SuperFlix : MainAPI() {
             // CORREÇÃO 3: Mapeando List<Episode> para List<List<Episode>>
             val episodes = seasons.map { listOf(it) }
 
-            newTvSeriesLoadResponse(title, url, type, episodes) {
+            newTvSeriesLoadResponse(title, url, type, seasons) { 
                 this.posterUrl = posterUrl
                 this.plot = plot
                 this.tags = tags
                 this.year = year
-                // Adicionar mais metadados se necessário
             }
         }
     }
