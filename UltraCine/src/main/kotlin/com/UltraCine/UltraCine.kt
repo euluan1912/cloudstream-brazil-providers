@@ -249,31 +249,30 @@ class UltraCine : MainAPI() {
             if (success) return true
 
              // Linha ~252:
-// ========== 3. ESTRATÉGIA DE FALLBACK (// ========== 3. ESTRATÉGIA DE FALLBACK (WebViewResolver) ==========
-// Linha ~252: Condição corrigida com indexOf para evitar conflito String/Regex
-if (html.indexOf("apiblogger.click", ignoreCase = true) >= 0 || 
-    finalUrl.indexOf("episodio/", ignoreCase = true) >= 0) {
+// ========== 3. ESTRATÉGIA DE FALLBACK (WebViewResolver) ==========
+// Linha ~252: Condição com Regex explícito para evitar conflito String/Regex
+if (html.contains(Regex("apiblogger\\.click", RegexOption.IGNORE_CASE)) || 
+    finalUrl.contains(Regex("episodio/", RegexOption.IGNORE_CASE))) {
 
-    val resolver = WebViewResolver(html)  // Sem o 'com.lagradost...' full path – já importado
+    val resolver = WebViewResolver(html)
 
-    launch {  // ← Resolve o erro de suspension (contexto coroutine)
-        val (mainRequest, subRequests) = resolver.resolveUsingWebView(finalUrl)
+    // Chamada direta (sem launch, pois loadLinks é suspend)
+    val (mainRequest, subRequests) = resolver.resolveUsingWebView(finalUrl)
 
-        // Processa mainRequest primeiro
-        mainRequest?.url?.let { potentialLink ->
+    // Processa mainRequest primeiro
+    mainRequest?.url?.toString()?.let { potentialLink ->
+        if (potentialLink.contains(".m3u8", ignoreCase = true) || 
+            potentialLink.contains(".mp4", ignoreCase = true)) {
+            loadExtractor(potentialLink, finalUrl, subtitleCallback, callback)
+        }
+    }
+
+    // Depois, processa sub-requests (comum para redirects/embeds)
+    subRequests.forEach { req ->
+        req.url?.toString()?.let { potentialLink ->
             if (potentialLink.contains(".m3u8", ignoreCase = true) || 
                 potentialLink.contains(".mp4", ignoreCase = true)) {
                 loadExtractor(potentialLink, finalUrl, subtitleCallback, callback)
-            }
-        }
-
-        // Depois, processa sub-requests (comum para redirects/embeds)
-        subRequests.forEach { req ->
-            req.url?.let { potentialLink ->
-                if (potentialLink.contains(".m3u8", ignoreCase = true) || 
-                    potentialLink.contains(".mp4", ignoreCase = true)) {
-                    loadExtractor(potentialLink, finalUrl, subtitleCallback, callback)
-                }
             }
         }
     }
