@@ -70,6 +70,7 @@ class Filemoon : ExtractorApi() {
             val postHeaders = getHeaders(apiUrl, playerEmbedUrl).toMutableMap()
             postHeaders["Origin"] = playerEmbedUrl.substringBefore("/e/")
             postHeaders.remove("Upgrade-Insecure-Requests")
+postHeaders["Content-Type"] = "application/x-www-form-urlencoded" // Muito importante!
 
             println("FilemoonExtractor: Fazendo requisição POST para Player HTML")
 
