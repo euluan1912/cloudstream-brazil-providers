@@ -3,9 +3,9 @@ package com.SuperFlix
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
-import com.lagradost.cloudstream3.utils.ExtractorLink // 🔥 CORREÇÃO 1: Import Explícito para resolver Unresolved reference
+import com.lagradost.cloudstream3.utils.ExtractorLink // 🔥 CORREÇÃO 1: Import explícito de ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLink.Companion.newExtractorLink
-import com.lagradost.cloudstream3.utils.AppUtils // 🔥 CORREÇÃO 2: Import Explícito para usar base64Encode
+import com.lagradost.cloudstream3.utils.AppUtils.base64Encode // 🔥 CORREÇÃO 2: Import estático de base64Encode
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -267,8 +267,8 @@ class SuperFlix : MainAPI() {
             val apiPath = apiMatch?.groupValues?.get(1)?.replace("\\/", "/") ?: return null
             val apiFullUrl = fixUrl(apiPath)
             
-            // CORREÇÃO: Usando AppUtils.base64Encode explicitamente
-            val keyB64 = AppUtils.base64Encode(key.toByteArray()) 
+            // CORREÇÃO: Usando a importação estática resolvida na linha 8
+            val keyB64 = base64Encode(key.toByteArray()) 
             
             val postBody = mapOf(
                 "action" to "getPlayer",
@@ -323,8 +323,10 @@ class SuperFlix : MainAPI() {
             
             val m3u8Match = Regex("""\s*["']file["']\s*:\s*["'](https?://[^"']+\.m3u8[^"']*)["']""").find(json)
             
-            // 🔥 CORREÇÃO 3: Usando ?.let para evitar erro de 'val' reassignment na linha 341
-            m3u8Match?.groupValues?.get(1)?.let { m3u8Link ->
+            // 🔥 CORREÇÃO 3: Usando val intermediária e if(link != null) para resolver o erro 'val' cannot be reassigned (linha 340)
+            val m3u8Link = m3u8Match?.groupValues?.get(1) 
+
+            if (m3u8Link != null) {
                 val quality = extractQualityFromUrl(m3u8Link)
                 
                 callback.invoke(
