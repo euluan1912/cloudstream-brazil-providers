@@ -14,8 +14,6 @@ class SuperFlix : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    private val fembedExtractor = FembedExtractor()
-    
     override val mainPage = mainPageOf(
         "$mainUrl/filmes" to "Filmes",
         "$mainUrl/series" to "Séries",
