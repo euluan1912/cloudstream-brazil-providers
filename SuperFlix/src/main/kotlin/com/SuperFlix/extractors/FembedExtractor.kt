@@ -10,6 +10,9 @@ class FembedExtractor : ExtractorApi() {
     override val name = "Fembed"
     override val mainUrl = "https://fembed.sx"
     
+    // Nova propriedade requerida pela API
+    override val requiresReferer = true
+    
     // Domínios suportados
     private val supportedDomains = listOf(
         "fembed.sx",
@@ -87,17 +90,18 @@ class FembedExtractor : ExtractorApi() {
                                 val quality = parseQuality(label)
                                 val isM3u8 = fileUrl.contains(".m3u8") || fileUrl.contains("master.m3u8")
                                 
-                                links.add(
-                                    newExtractorLink(
-                                        url = fixUrl(fileUrl),
-                                        source = name,
-                                        name = label,
-                                        quality = quality.value,
-                                        referer = "https://$domain/",
-                                        isM3u8 = isM3u8
-                                    ) ?: return@forEach
+                                // Usando a nova API correta
+                                val extractorLink = ExtractorLink(
+                                    source = name,
+                                    name = label,
+                                    url = fixUrl(fileUrl),
+                                    referer = "https://$domain/",
+                                    quality = quality,
+                                    isM3u8 = isM3u8,
+                                    headers = mapOf("Referer" to "https://$domain/")
                                 )
                                 
+                                links.add(extractorLink)
                                 println("FembedExtractor: Adicionado: $label ($quality)")
                             }
                         }
@@ -112,7 +116,7 @@ class FembedExtractor : ExtractorApi() {
             }
             
             // Se as APIs falharem, tentar extrair do HTML da página
-            return tryExtractFromPage(url) ?: links.takeIf { it.isNotEmpty() }
+            return tryExtractFromPage(url, referer) ?: links.takeIf { it.isNotEmpty() }
             
         } catch (e: Exception) {
             println("FembedExtractor: Erro geral: ${e.message}")
@@ -130,7 +134,7 @@ class FembedExtractor : ExtractorApi() {
         
         val patterns = listOf(
             Regex("""(?:fembed|feurl|fcdn|femax20|fembeder|fembed-hd|vanfem|24hd|vcdn|asianclub|embedsito)\.(?:sx|com|to|stream|org|xyz|tv|club|io)/(?:e|v|f)/([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)""", RegexOption.IGNORE_CASE),
-            Regex("""/(?:e|v|f)/([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)"""),
+            Regex("""/(?:e|v|f)/([a-zA-Z0-9]+(/:[a-zA-Z0-9\-]+)?)"""),
             Regex("""([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)""")
         )
         
@@ -168,41 +172,41 @@ class FembedExtractor : ExtractorApi() {
                 url.contains("stream/"))
     }
     
-    private fun parseQuality(label: String): Qualities {
+    private fun parseQuality(label: String): Int {
         val labelLower = label.lowercase()
         
         return when {
-            labelLower.contains("4k") || labelLower.contains("2160") -> Qualities.P2160
-            labelLower.contains("1440") || labelLower.contains("qhd") -> Qualities.P1440
-            labelLower.contains("1080") || labelLower.contains("fhd") -> Qualities.P1080
-            labelLower.contains("720") || labelLower.contains("hd") -> Qualities.P720
-            labelLower.contains("480") -> Qualities.P480
-            labelLower.contains("360") -> Qualities.P360
-            labelLower.contains("240") -> Qualities.P240
-            labelLower.contains("144") -> Qualities.P144
+            labelLower.contains("4k") || labelLower.contains("2160") -> Qualities.P2160.value
+            labelLower.contains("1440") || labelLower.contains("qhd") -> Qualities.P1440.value
+            labelLower.contains("1080") || labelLower.contains("fhd") -> Qualities.P1080.value
+            labelLower.contains("720") || labelLower.contains("hd") -> Qualities.P720.value
+            labelLower.contains("480") -> Qualities.P480.value
+            labelLower.contains("360") -> Qualities.P360.value
+            labelLower.contains("240") -> Qualities.P240.value
+            labelLower.contains("144") -> Qualities.P144.value
             else -> {
                 // Extrair número
                 val numMatch = Regex("""(\d+)""").find(labelLower)
                 numMatch?.groupValues?.get(1)?.toIntOrNull()?.let { num ->
                     when (num) {
-                        in 2160..9999 -> Qualities.P2160
-                        in 1440..2159 -> Qualities.P1440
-                        in 1080..1439 -> Qualities.P1080
-                        in 720..1079 -> Qualities.P720
-                        in 480..719 -> Qualities.P480
-                        in 360..479 -> Qualities.P360
-                        in 240..359 -> Qualities.P240
-                        in 144..239 -> Qualities.P144
-                        else -> Qualities.Unknown
+                        in 2160..9999 -> Qualities.P2160.value
+                        in 1440..2159 -> Qualities.P1440.value
+                        in 1080..1439 -> Qualities.P1080.value
+                        in 720..1079 -> Qualities.P720.value
+                        in 480..719 -> Qualities.P480.value
+                        in 360..479 -> Qualities.P360.value
+                        in 240..359 -> Qualities.P240.value
+                        in 144..239 -> Qualities.P144.value
+                        else -> Qualities.Unknown.value
                     }
-                } ?: Qualities.Unknown
+                } ?: Qualities.Unknown.value
             }
         }
     }
     
-    private suspend fun tryExtractFromPage(url: String): List<ExtractorLink>? {
+    private suspend fun tryExtractFromPage(url: String, referer: String?): List<ExtractorLink>? {
         try {
-            val response = app.get(url)
+            val response = app.get(url, referer = referer)
             val html = response.text
             
             // Procurar por iframes
