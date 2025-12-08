@@ -5,6 +5,10 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
 
 class SuperFlix : MainAPI() {
     override var mainUrl = "https://superflix21.lol"
@@ -108,7 +112,7 @@ class SuperFlix : MainAPI() {
             element.toSearchResult()?.let { results.add(it) }
         }
 
-        return results.distinctBy { it.url })
+        return results.distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -382,22 +386,19 @@ class SuperFlix : MainAPI() {
                                     val quality = getQualityFromLabel(label ?: "Unknown")
                                     val isM3u8 = file.contains(".m3u8") || file.contains("master.m3u8")
 
-                                    callback.invoke(
-                                        ExtractorLink(
-                                            name = "Fembed",
-                                            source = "$name ($domain)",
-                                            url = file,
-                                            referer = "$domain/",
-                                            quality = quality,
-                                            isM3u8 = isM3u8,
-                                            headers = mapOf(
-                                                "Referer" to "$domain/",
-                                                "Origin" to domain
-                                            )
-                                        )
-                                    )
+                                    // Usando newExtractorLink (não deprecated)
+                                    newExtractorLink(
+                                        url = file,
+                                        source = name,
+                                        name = label ?: "Fembed",
+                                        quality = quality.value,
+                                        referer = "$domain/",
+                                        isM3u8 = isM3u8
+                                    )?.let { link ->
+                                        callback.invoke(link)
+                                    }
 
-                                    println("SuperFlix DEBUG: Adicionado stream: $quality - $file")
+                                    println("SuperFlix DEBUG: Adicionado stream: $label - $file")
                                 }
                             }
 
@@ -425,7 +426,6 @@ class SuperFlix : MainAPI() {
             Regex("""(https?://[^"\s]+\.(?:mp4|m3u8|mkv))""")
         )
 
-        val html = if (data.contains("<")) data else ""
         for (pattern in patterns) {
             val match = pattern.find(data)
             if (match != null) {
