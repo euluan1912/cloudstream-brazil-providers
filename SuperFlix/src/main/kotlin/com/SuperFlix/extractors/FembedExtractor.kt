@@ -4,243 +4,96 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.extractors.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 
 class FembedExtractor : ExtractorApi() {
     override val name = "Fembed"
     override val mainUrl = "https://fembed.sx"
-    
-    // Nova propriedade requerida pela API
     override val requiresReferer = true
     
-    // Domínios suportados
-    private val supportedDomains = listOf(
-        "fembed.sx",
-        "www.fembed.com",
-        "fembed.to",
-        "feurl.com",
-        "fcdn.stream",
-        "femax20.com",
-        "fembeder.com",
-        "fembed.net",
-        "fembad.org",
-        "femoload.xyz",
-        "fembed-hd.com",
-        "vanfem.com",
-        "24hd.club",
-        "vcdn.io",
-        "asianclub.tv",
-        "embedsito.com"
-    )
-    
-    // Tipos MIME suportados
-    private val supportedMimes = listOf(
-        "video/mp4",
-        "video/webm",
-        "application/x-mpegURL",
-        "application/vnd.apple.mpegurl"
-    )
-    
-    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
+    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink> {
         val links = mutableListOf<ExtractorLink>()
         
         try {
             // Extrair ID do vídeo
-            val videoId = extractVideoId(url)
-            if (videoId.isBlank()) return null
+            val videoId = extractVideoId(url) ?: return links
             
-            // Determinar domínio base
-            val domain = getDomainFromUrl(url)
+            // Tentar domínios conhecidos
+            val domains = listOf("www.fembed.com", "fembed.sx", "fembed.to", "feurl.com")
             
-            // Tentar diferentes APIs
-            val apiUrls = listOf(
-                "https://$domain/api/source/$videoId",
-                "https://www.$domain/api/source/$videoId",
-                "https://api.$domain/api/source/$videoId"
-            )
-            
-            for (apiUrl in apiUrls) {
+            for (domain in domains) {
                 try {
-                    println("FembedExtractor: Tentando API: $apiUrl")
+                    val apiUrl = "https://$domain/api/source/$videoId"
                     
                     val response = app.post(
                         apiUrl,
                         headers = mapOf(
-                            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                            "Content-Type" to "application/x-www-form-urlencoded",
                             "Referer" to "https://$domain/",
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            "X-Requested-With" to "XMLHttpRequest"
                         ),
-                        data = mapOf(
-                            "r" to "",
-                            "d" to domain
-                        )
+                        data = mapOf("r" to "", "d" to domain)
                     )
                     
                     val json = response.parsedSafe<FembedResponse>()
-                    if (json?.success == true && json.data != null) {
-                        println("FembedExtractor: Encontrados ${json.data.size} streams")
-                        
-                        json.data.forEach { stream ->
-                            val fileUrl = stream.file ?: return@forEach
+                    if (json?.success == true) {
+                        json.data?.forEach { stream ->
+                            val file = stream.file ?: return@forEach
                             val label = stream.label ?: "Unknown"
+                            val isM3u8 = file.contains(".m3u8")
                             
-                            // Verificar se é um URL válido
-                            if (isValidUrl(fileUrl)) {
-                                val quality = parseQuality(label)
-                                val isM3u8 = fileUrl.contains(".m3u8") || fileUrl.contains("master.m3u8")
-                                
-                                // Usando a nova API correta
-                                val extractorLink = ExtractorLink(
-                                    source = name,
-                                    name = label,
-                                    url = fixUrl(fileUrl),
-                                    referer = "https://$domain/",
-                                    quality = quality,
-                                    isM3u8 = isM3u8,
-                                    headers = mapOf("Referer" to "https://$domain/")
-                                )
-                                
-                                links.add(extractorLink)
-                                println("FembedExtractor: Adicionado: $label ($quality)")
+                            // Usar newExtractorLink em vez do construtor deprecated
+                            newExtractorLink(
+                                url = file,
+                                source = name,
+                                name = label,
+                                quality = getQuality(label),
+                                referer = "https://$domain/",
+                                isM3u8 = isM3u8
+                            )?.let { link ->
+                                links.add(link)
                             }
                         }
                         
-                        if (links.isNotEmpty()) {
-                            return links
-                        }
+                        if (links.isNotEmpty()) return links
                     }
                 } catch (e: Exception) {
-                    println("FembedExtractor: Erro na API $apiUrl: ${e.message}")
+                    // Tenta próximo domínio
+                    continue
                 }
             }
-            
-            // Se as APIs falharem, tentar extrair do HTML da página
-            return tryExtractFromPage(url, referer) ?: links.takeIf { it.isNotEmpty() }
-            
         } catch (e: Exception) {
-            println("FembedExtractor: Erro geral: ${e.message}")
-            return null
+            e.printStackTrace()
         }
+        
+        return links
     }
     
-    private fun extractVideoId(url: String): String {
-        // Padrões: 
-        // https://fembed.sx/v/304115/1-1
-        // https://fembed.sx/e/304115
-        // /v/304115/1-1
-        // 304115/1-1
-        // 304115
-        
+    private fun extractVideoId(url: String): String? {
         val patterns = listOf(
-            Regex("""(?:fembed|feurl|fcdn|femax20|fembeder|fembed-hd|vanfem|24hd|vcdn|asianclub|embedsito)\.(?:sx|com|to|stream|org|xyz|tv|club|io)/(?:e|v|f)/([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)""", RegexOption.IGNORE_CASE),
-            Regex("""/(?:e|v|f)/([a-zA-Z0-9]+(/:[a-zA-Z0-9\-]+)?)"""),
-            Regex("""([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)""")
+            Regex("""/(?:e|v|f)/([a-zA-Z0-9]+(?:/[a-zA-Z0-9\-]+)?)"""),
+            Regex("""(\d+(?:/\d+-\d+)?)""")
         )
         
         for (pattern in patterns) {
             val match = pattern.find(url)
-            if (match != null && match.groupValues.size > 1) {
-                val id = match.groupValues[1]
-                println("FembedExtractor: ID extraído: $id")
-                return id
+            if (match != null) {
+                return match.groupValues.getOrNull(1)
             }
-        }
-        
-        return ""
-    }
-    
-    private fun getDomainFromUrl(url: String): String {
-        val domainPattern = Regex("""https?://([^/]+)""")
-        val match = domainPattern.find(url)
-        
-        if (match != null) {
-            val fullDomain = match.groupValues[1]
-            // Remover www. se existir
-            return fullDomain.replace("www.", "")
-        }
-        
-        // Domínio padrão
-        return "fembed.sx"
-    }
-    
-    private fun isValidUrl(url: String): Boolean {
-        return url.startsWith("http") && 
-               (url.contains(".mp4") || 
-                url.contains(".m3u8") || 
-                url.contains("video/") ||
-                url.contains("stream/"))
-    }
-    
-    private fun parseQuality(label: String): Int {
-        val labelLower = label.lowercase()
-        
-        return when {
-            labelLower.contains("4k") || labelLower.contains("2160") -> Qualities.P2160.value
-            labelLower.contains("1440") || labelLower.contains("qhd") -> Qualities.P1440.value
-            labelLower.contains("1080") || labelLower.contains("fhd") -> Qualities.P1080.value
-            labelLower.contains("720") || labelLower.contains("hd") -> Qualities.P720.value
-            labelLower.contains("480") -> Qualities.P480.value
-            labelLower.contains("360") -> Qualities.P360.value
-            labelLower.contains("240") -> Qualities.P240.value
-            labelLower.contains("144") -> Qualities.P144.value
-            else -> {
-                // Extrair número
-                val numMatch = Regex("""(\d+)""").find(labelLower)
-                numMatch?.groupValues?.get(1)?.toIntOrNull()?.let { num ->
-                    when (num) {
-                        in 2160..9999 -> Qualities.P2160.value
-                        in 1440..2159 -> Qualities.P1440.value
-                        in 1080..1439 -> Qualities.P1080.value
-                        in 720..1079 -> Qualities.P720.value
-                        in 480..719 -> Qualities.P480.value
-                        in 360..479 -> Qualities.P360.value
-                        in 240..359 -> Qualities.P240.value
-                        in 144..239 -> Qualities.P144.value
-                        else -> Qualities.Unknown.value
-                    }
-                } ?: Qualities.Unknown.value
-            }
-        }
-    }
-    
-    private suspend fun tryExtractFromPage(url: String, referer: String?): List<ExtractorLink>? {
-        try {
-            val response = app.get(url, referer = referer)
-            val html = response.text
-            
-            // Procurar por iframes
-            val iframePattern = Regex("""<iframe[^>]+src=["']([^"']+)["']""")
-            val iframeMatches = iframePattern.findAll(html)
-            
-            for (match in iframeMatches) {
-                val iframeUrl = match.groupValues[1]
-                if (iframeUrl.contains("fembed")) {
-                    println("FembedExtractor: Encontrado iframe: $iframeUrl")
-                    return getUrl(iframeUrl, url)
-                }
-            }
-            
-            // Procurar por scripts com URLs
-            val scriptPattern = Regex("""(https?://[^"'\s]+/v/[a-zA-Z0-9]+[^"'\s]*)""")
-            val scriptMatches = scriptPattern.findAll(html)
-            
-            for (match in scriptMatches) {
-                val scriptUrl = match.value
-                if (scriptUrl.contains("fembed")) {
-                    println("FembedExtractor: Encontrado em script: $scriptUrl")
-                    return getUrl(scriptUrl, url)
-                }
-            }
-            
-        } catch (e: Exception) {
-            println("FembedExtractor: Erro ao extrair da página: ${e.message}")
         }
         
         return null
     }
     
-    // Classes para parsing JSON
+    private fun getQuality(label: String): Int {
+        return when {
+            label.contains("1080") -> Qualities.P1080.value
+            label.contains("720") -> Qualities.P720.value
+            label.contains("480") -> Qualities.P480.value
+            label.contains("360") -> Qualities.P360.value
+            else -> Qualities.Unknown.value
+        }
+    }
+    
     data class FembedResponse(
         @JsonProperty("success") val success: Boolean = false,
         @JsonProperty("data") val data: List<FembedStream>? = null
