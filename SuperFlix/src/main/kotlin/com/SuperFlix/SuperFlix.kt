@@ -376,56 +376,50 @@ data class FembedSource(
     // --------------------------------------------------------------------------------
 
     override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        if (data.isBlank()) return false
-        
-        val fixedDataUrl = fixUrl(data)
-        
-        return try {
-            var fembedUrl: String? = null
-            
-            // 1. Identificar o Link
-            if (fixedDataUrl.contains("fembed.sx")) {
-                fembedUrl = fixedDataUrl
-            } else if (fixedDataUrl.contains("s=") && fixedDataUrl.contains("c=")) {
-                // Resolve o Player Wrapper do SuperFlix para obter a URL do Fembed
-                fembedUrl = resolveWrapperPlayer(fixedDataUrl, mainUrl)
-            }
-            
-            if (fembedUrl != null) {
-                // Tenta a extração manual (como o Web Caster)
-                val success = manualFembedExtractor(fembedUrl, callback)
-                
-                if (success) return true
-                
-                // Fallback para o extrator nativo do CloudStream
-                return loadExtractor(fembedUrl, mainUrl, subtitleCallback, callback)
-            }
-            
-            // 3. FALLBACK: Tenta extrair a URL do player da página do filme/episódio
-            val res = app.get(fixedDataUrl, referer = mainUrl, timeout = 30)
-            val doc = res.document
-            
-            val fembedUrlFromPage = findFembedUrlInPage(doc)
-            
-            if (fembedUrlFromPage != null) {
-                // Chama loadLinks recursivamente com a URL do player/fembed encontrada
-                return loadLinks(fembedUrlFromPage, isCasting, subtitleCallback, callback)
-            }
-            
-            false
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    if (data.isBlank()) return false
+
+    val fixedDataUrl = fixUrl(data)
+
+    return try {
+        var fembedUrl: String? = null
+
+        // 1. Detecta Fembed/mirrors
+        val fembedPattern = Regex("fembed|femax|gcloud|dutafilm|embedsito")
+        if (fembedPattern in fixedDataUrl) {
+            fembedUrl = fixedDataUrl
+        } else if (fixedDataUrl.contains("/player") || fixedDataUrl.contains("?s=")) {
+            // Resolve wrapper do SuperFlix
+            fembedUrl = resolveWrapperPlayer(fixedDataUrl, mainUrl)
         }
+
+        if (fembedUrl != null) {
+            // Extrai com o método atualizado (gera token dinâmico)
+            val success = manualFembedExtractor(fembedUrl, callback)
+            if (success) return true
+
+            // Fallback: extrator nativo CloudStream
+            return loadExtractor(fembedUrl, mainUrl, subtitleCallback, callback)
+        }
+
+        // Fallback página (se data for URL da página)
+        val res = app.get(fixedDataUrl, referer = mainUrl, timeout = 30)
+        val doc = res.document
+        val fembedFromPage = findFembedUrlInPage(doc)
+        if (fembedFromPage != null) {
+            return loadLinks(fembedFromPage, isCasting, subtitleCallback, callback)
+        }
+
+        false
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
     }
-    
-    // --------------------------------------------------------------------------------
+} --------------------------------------------------------------------------------
     // FUNÇÃO AUXILIAR JSON-LD
     // --------------------------------------------------------------------------------
 
