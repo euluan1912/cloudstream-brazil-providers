@@ -13,7 +13,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper
  * - https://fembed.sx/e/{id}
  * - https://fembed.sx/v/{id}
  */
-open class Filemoon : ExtractorApi() {
+class Filemoon : ExtractorApi() {
     override val name = "Filemoon"
     override val mainUrl = "https://filemoon.in"
     override val requiresReferer = true
