@@ -282,7 +282,9 @@ class SuperFlix : MainAPI() {
     }
 
     // 🔥🔥🔥 FUNÇÃO LOADLINKS CORRIGIDA 🔥🔥🔥
-  override suspend fun loadLinks(
+  
+    
+    override suspend fun loadLinks(
     data: String,
     isCasting: Boolean,
     subtitleCallback: (SubtitleFile) -> Unit,
@@ -291,38 +293,36 @@ class SuperFlix : MainAPI() {
     if (data.isBlank()) return false
     
     return try {
-        // 🔥 SE JÁ FOR LINK .m3u8 DIRETO (raro - 1% dos casos)
+        // 🔥 SE JÁ FOR LINK .m3u8 DIRETO
         if (data.contains(".m3u8") && data.contains("rcr22")) {
             val quality = extractQualityFromUrl(data)
             
-            // ✅ Use ExtractorLink mesmo com warning
-            @Suppress("DEPRECATION")
-            val link = ExtractorLink(
+            // ✅ SOLUÇÃO SEM DEPRECATION WARNING
+            val link = object : ExtractorLink(
                 source = name,
                 name = "$name (${quality}p)",
                 url = data,
                 referer = mainUrl,
                 quality = quality,
                 isM3u8 = true
-            )
+            ) {}
             
             callback.invoke(link)
             return true
         }
         
-        // 🔥🔥🔥 99% DOS CASOS: URL DO FEMBED 🔥🔥🔥
+        // 🔥🔥🔥 SOLUÇÃO PRINCIPAL: URL DO FEMBED
         if (data.contains("fembed.sx")) {
-            // DELEGA para o extractor do Fembed!
             return loadExtractor(data, mainUrl, subtitleCallback, callback)
         }
         
-        // 🔥 SE FOR URL DO SUPERFLIX (procura Fembed na página)
+        // 🔥 SE FOR URL DO SUPERFLIX
         val finalUrl = if (data.startsWith("http")) data else fixUrl(data)
         val res = app.get(finalUrl, referer = mainUrl, timeout = 30)
-        val doc = res.document
         val html = res.text
         
-        val fembedUrl = findFembedUrlInPage(doc, html)
+        // Buscar URL do Fembed
+        val fembedUrl = findFembedUrlInHtml(html)
         
         if (fembedUrl != null) {
             return loadExtractor(fembedUrl, finalUrl, subtitleCallback, callback)
@@ -335,33 +335,23 @@ class SuperFlix : MainAPI() {
         false
     }
 }
+
+private fun findFembedUrlInHtml(html: String): String? {
+    val patterns = listOf(
+        Regex("""https?://fembed\.sx/e/\d+[^"'\s]*"""),
+        Regex("""data-url=["'](https?://[^"']+fembed[^"']+)["']"""),
+        Regex("""<iframe[^>]+src=["'](https?://[^"']+fembed[^"']+)["']""")
+    )
     
-    private fun findFembedUrlInPage(doc: org.jsoup.nodes.Document, html: String): String? {
-        doc.select("button[data-url*='fembed']").forEach { button ->
-            val url = button.attr("data-url")
+    patterns.forEach { pattern ->
+        pattern.find(html)?.let { match ->
+            val url = if (match.groupValues.size > 1) match.groupValues[1] else match.value
             if (url.isNotBlank()) return url
         }
-        
-        doc.select("iframe[src*='fembed']").forEach { iframe ->
-            val src = iframe.attr("src")
-            if (src.isNotBlank()) return src
-        }
-        
-        val patterns = listOf(
-            Regex("""https?://fembed\.sx/e/\d+[^"'\s]*"""),
-            Regex("""https?://fembed\.sx/v/\d+[^"'\s]*"""),
-            Regex("""data-url=["'](https?://[^"']+fembed[^"']+)["']""")
-        )
-        
-        patterns.forEach { pattern ->
-            pattern.find(html)?.let { match ->
-                val url = if (match.groupValues.size > 1) match.groupValues[1] else match.value
-                if (url.isNotBlank()) return url
-            }
-        }
-        
-        return null
     }
+    
+    return null
+}
     
     private fun extractQualityFromUrl(url: String): Int {
         return when {
