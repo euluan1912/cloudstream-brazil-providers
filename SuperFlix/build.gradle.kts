@@ -2,7 +2,7 @@ version = 1
 
 cloudstream {
     description = "SuperFlix - Filmes e Séries em Português"
-    language = "pt"
+    language = "pt-br"
     authors = listOf("euluan1912")
     status = 1
     tvTypes = listOf("Movie", "TvSeries")
