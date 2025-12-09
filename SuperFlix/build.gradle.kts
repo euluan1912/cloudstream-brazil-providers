@@ -6,5 +6,5 @@ cloudstream {
     authors = listOf("euluan1912")
     status = 1
     tvTypes = listOf("Movie", "TvSeries")
-    iconUrl = "https://superflix.com.br/wp-content/uploads/2023/08/superflix-logo.png"
+    iconUrl = "https://superflix21.lol/assets/logo.png"
 }
