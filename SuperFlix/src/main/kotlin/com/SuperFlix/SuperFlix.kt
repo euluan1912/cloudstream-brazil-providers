@@ -309,63 +309,128 @@ class SuperFlix : MainAPI() {
             }
         }
     }
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    println("SuperFlix: loadLinks - INÍCIO")
+    println("SuperFlix: loadLinks - Carregando links de: $data")
+    println("SuperFlix: loadLinks - isCasting: $isCasting")
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        println("SuperFlix: loadLinks - INÍCIO")
-        println("SuperFlix: loadLinks - Carregando links de: $data")
-        println("SuperFlix: loadLinks - isCasting: $isCasting")
+    if (data.isEmpty()) {
+        println("SuperFlix: loadLinks - ERRO CRÍTICO: URL vazia")
+        return false
+    }
 
-        if (data.isEmpty()) {
-            println("SuperFlix: loadLinks - ERRO CRÍTICO: URL vazia")
-            return false
+    // Primeiro, tentar resolver diretamente via WebView
+    println("SuperFlix: loadLinks - Tentando resolver via WebView")
+    try {
+        // Usar WebView resolver para obter o vídeo
+        val videoUrl = WebViewResolver(data).getVideoUrl(maxTime = 10000L)
+        if (!videoUrl.isNullOrEmpty()) {
+            println("SuperFlix: loadLinks - URL de vídeo encontrada via WebView: $videoUrl")
+            
+            // Criar link direto
+            val quality = detectQualityFromUrl(videoUrl)
+            val source = detectSourceFromUrl(videoUrl)
+            
+            val link = ExtractorLink(
+                source = this.name,
+                name = "SuperFlix ($source)",
+                url = videoUrl,
+                referer = data,
+                quality = quality,
+                isM3u8 = videoUrl.contains(".m3u8"),
+                isDash = videoUrl.contains(".mpd")
+            )
+            
+            callback.invoke(link)
+            return true
         }
+    } catch (e: Exception) {
+        println("SuperFlix: loadLinks - WebView falhou: ${e.message}")
+    }
 
-        // Verificar se é uma URL do Filemoon/Fembed
-        val isFilemoonUrl = data.contains("filemoon.") || 
-                       data.contains("fembed.") || 
-                       data.contains("ico3c.")
-
-        println("SuperFlix: loadLinks - isFilemoonUrl: $isFilemoonUrl")
-
-        if (isFilemoonUrl) {
-            println("SuperFlix: loadLinks - Usando extractor Filemoon diretamente")
-            try {
-                // Importar a classe corretamente
-                val filemoonExtractor = com.lagradost.cloudstream3.extractors.Filemoon()
-                filemoonExtractor.getUrl(
-                    url = data,
-                    referer = "https://fembed.sx/",
-                    subtitleCallback = subtitleCallback,
-                    callback = callback
+    // Se WebView falhar, tentar extrair da página diretamente
+    println("SuperFlix: loadLinks - Tentando extrair da página diretamente")
+    try {
+        val document = app.get(data).document
+        val html = document.html()
+        
+        // Procurar por URLs de vídeo no HTML
+        val videoUrls = findVideoUrlsInHtml(html)
+        println("SuperFlix: loadLinks - URLs de vídeo encontradas no HTML: ${videoUrls.size}")
+        
+        if (videoUrls.isNotEmpty()) {
+            videoUrls.forEach { videoUrl ->
+                val quality = detectQualityFromUrl(videoUrl)
+                val source = detectSourceFromUrl(videoUrl)
+                
+                val link = ExtractorLink(
+                    source = this.name,
+                    name = "SuperFlix ($source)",
+                    url = videoUrl,
+                    referer = data,
+                    quality = quality,
+                    isM3u8 = videoUrl.contains(".m3u8"),
+                    isDash = videoUrl.contains(".mpd")
                 )
+                
+                callback.invoke(link)
+            }
+            return true
+        }
+        
+        // Tentar encontrar player iframe
+        val iframeSrc = document.selectFirst("iframe[src]")?.attr("src")
+        if (!iframeSrc.isNullOrEmpty()) {
+            println("SuperFlix: loadLinks - Iframe encontrado: $iframeSrc")
+            // Recursivamente tentar extrair do iframe
+            return loadLinks(fixUrl(iframeSrc), isCasting, subtitleCallback, callback)
+        }
+        
+    } catch (e: Exception) {
+        println("SuperFlix: loadLinks - ERRO ao extrair da página: ${e.message}")
+    }
 
-                // Verificar se algum link foi adicionado
-                println("SuperFlix: loadLinks - Filemoon extractor executado com sucesso")
-                return true
-            } catch (e: Exception) {
-                println("SuperFlix: loadLinks - ERRO ao usar Filemoon: ${e.message}")
-                e.printStackTrace()
+    // Última tentativa: usar extractor genérico
+    println("SuperFlix: loadLinks - Tentando loadExtractor genérico")
+    return try {
+        val result = loadExtractor(data, subtitleCallback, callback)
+        println("SuperFlix: loadLinks - loadExtractor retornou: $result")
+        result
+    } catch (e: Exception) {
+        println("SuperFlix: loadLinks - ERRO EXCEÇÃO: ${e.message}")
+        false
+    }
+}
+
+private fun findVideoUrlsInHtml(html: String): List<String> {
+    val videoUrls = mutableListOf<String>()
+    
+    // Padrões para buscar URLs de vídeo
+    val patterns = listOf(
+        Regex("""src\s*=\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""file\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""video\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""url\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex("""source\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
+        Regex(""""contentUrl"\s*:\s*"([^"]+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"]*)"""", RegexOption.IGNORE_CASE)
+    )
+    
+    patterns.forEach { pattern ->
+        pattern.findAll(html).forEach { match ->
+            val url = match.groupValues.getOrNull(1) ?: return@forEach
+            if (url.startsWith("http") && isVideoUrl(url)) {
+                videoUrls.add(fixUrl(url))
             }
         }
-
-        println("SuperFlix: loadLinks - Tentando loadExtractor para outros serviços")
-
-        return try {
-            val result = loadExtractor(data, subtitleCallback, callback)
-            println("SuperFlix: loadLinks - loadExtractor retornou: $result")
-            result
-        } catch (e: Exception) {
-            println("SuperFlix: loadLinks - ERRO EXCEÇÃO: ${e.message}")
-            println("SuperFlix: loadLinks - Stack trace:")
-            e.printStackTrace()
-            false
-        }
     }
+    
+    return videoUrls.distinct()
+}
 
     // ========== MÉTODOS DE NETWORK SNIFFING ==========
     
