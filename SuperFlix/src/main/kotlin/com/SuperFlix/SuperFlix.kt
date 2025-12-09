@@ -29,7 +29,8 @@ class SuperFlix : MainAPI() {
         "$mainUrl/lancamentos" to "Lançamentos",
         "$mainUrl/filmes" to "Últimos Filmes",
         "$mainUrl/series" to "Últimas Séries"
-    )
+        "$mainUrl/animes" to "Últimas Animes"
+  )
 
     // =========================================================================
     // PÁGINA PRINCIPAL
