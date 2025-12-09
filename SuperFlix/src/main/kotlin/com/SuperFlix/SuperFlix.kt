@@ -254,6 +254,7 @@ class SuperFlix : MainAPI() {
     }
 
     // ========== MÉTODOS ESPECIAIS PARA FILEMOON/ICO3C ==========
+    // ========== MÉTODOS ESPECIAIS PARA FILEMOON/ICO3C ==========
 
     private suspend fun extractFilemoon(filemoonUrl: String): List<String> {
         val m3u8Urls = mutableListOf<String>()
@@ -273,20 +274,27 @@ class SuperFlix : MainAPI() {
             }
 
             // 2. Extrair o hash de segurança (hash/token)
-            val hashRegex = Regex("""hash=['"]?([a-fA-F0-9-]+)['"]?,?""")
-            val dynamicHash = hashRegex.find(html)?.groupValues?.get(1)
+            
+            // Tentativa A (Padrão mais estrito: GUID completo ou hash=...)
+            val dynamicHashA = Regex("""hash=['"]?([a-fA-F0-9-]+)['"]?,?""").find(html)?.groupValues?.get(1)
                 ?: Regex("""\b[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\b""").find(html)?.value
+
+            // Tentativa B (Mais genérica: String alfanumérica entre 32 e 40 caracteres)
+            val dynamicHashB = Regex("""\b([a-fA-F0-9]{32,40})\b""").find(html)?.groupValues?.get(1)
+
+            // Usar o primeiro hash encontrado, priorizando o A
+            val dynamicHash = dynamicHashA ?: dynamicHashB
 
             if (dynamicHash.isNullOrBlank()) {
                  println("SuperFlix: extractFilemoon - ERRO: Hash dinâmico não encontrado.")
                  return emptyList()
             }
-
+            
             // 3. Montar a URL completa da API Intermediária (ico3c.com)
             val baseUrlAPI = "https://ico3c.com/dl?view/file=$fileCode&hash=$dynamicHash"
-            
+
             val fixedParams = "&embed=1&prem=&referer=fembed.sx&vb=0&adb=0&cx=198&cy=394&device=Mobile%2FAndroid&browser=Chrome&ww=393&wh=768&gpuv=Google%20Inc.%20(Qualcomm)"
-            
+
             val urlAPICompleta = "$baseUrlAPI$fixedParams"
 
             println("SuperFlix: extractFilemoon - API Intermediária construída: $urlAPICompleta")
@@ -316,6 +324,7 @@ class SuperFlix : MainAPI() {
 
         return m3u8Urls.distinct()
     }
+
 
     // ========== MÉTODOS ORIGINAIS (MANTIDOS) ==========
 
