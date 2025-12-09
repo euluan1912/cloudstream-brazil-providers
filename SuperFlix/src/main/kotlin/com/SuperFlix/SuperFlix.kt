@@ -309,133 +309,102 @@ class SuperFlix : MainAPI() {
             }
         }
     }
-override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
-    println("SuperFlix: loadLinks - INÍCIO")
-    println("SuperFlix: loadLinks - Carregando links de: $data")
-    println("SuperFlix: loadLinks - isCasting: $isCasting")
 
-    if (data.isEmpty()) {
-        println("SuperFlix: loadLinks - ERRO CRÍTICO: URL vazia")
-        return false
-    }
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        println("SuperFlix: loadLinks - INÍCIO")
+        println("SuperFlix: loadLinks - Carregando links de: $data")
+        println("SuperFlix: loadLinks - isCasting: $isCasting")
 
-    // Primeiro, tentar resolver diretamente via WebView
-    println("SuperFlix: loadLinks - Tentando resolver via WebView")
-    try {
-        // Usar WebView resolver para obter o vídeo
-        val videoUrl = WebViewResolver(data).getVideoUrl(maxTime = 10000L)
-        if (!videoUrl.isNullOrEmpty()) {
-            println("SuperFlix: loadLinks - URL de vídeo encontrada via WebView: $videoUrl")
-            
-            // Criar link direto
-            val quality = detectQualityFromUrl(videoUrl)
-            val source = detectSourceFromUrl(videoUrl)
-            
-            val link = ExtractorLink(
-                source = this.name,
-                name = "SuperFlix ($source)",
-                url = videoUrl,
-                referer = data,
-                quality = quality,
-                isM3u8 = videoUrl.contains(".m3u8"),
-                isDash = videoUrl.contains(".mpd")
-            )
-            
-            callback.invoke(link)
-            return true
+        if (data.isEmpty()) {
+            println("SuperFlix: loadLinks - ERRO CRÍTICO: URL vazia")
+            return false
         }
-    } catch (e: Exception) {
-        println("SuperFlix: loadLinks - WebView falhou: ${e.message}")
-    }
 
-    // Se WebView falhar, tentar extrair da página diretamente
-    println("SuperFlix: loadLinks - Tentando extrair da página diretamente")
-    try {
-        val document = app.get(data).document
-        val html = document.html()
-        
-        // Procurar por URLs de vídeo no HTML
-        val videoUrls = findVideoUrlsInHtml(html)
-        println("SuperFlix: loadLinks - URLs de vídeo encontradas no HTML: ${videoUrls.size}")
-        
-        if (videoUrls.isNotEmpty()) {
-            videoUrls.forEach { videoUrl ->
-                val quality = detectQualityFromUrl(videoUrl)
-                val source = detectSourceFromUrl(videoUrl)
+        // Se sniffing estiver habilitado, usar nosso sistema de detecção
+        if (sniffingEnabled) {
+            println("SuperFlix: loadLinks - Usando sistema de network sniffing")
+            
+            try {
+                // Usar sniffing para encontrar URLs de vídeo
+                val sniffedUrls = sniffVideoUrls(data)
+                println("SuperFlix: loadLinks - URLs encontradas via sniffing: ${sniffedUrls.size}")
                 
-                val link = ExtractorLink(
-                    source = this.name,
-                    name = "SuperFlix ($source)",
-                    url = videoUrl,
-                    referer = data,
-                    quality = quality,
-                    isM3u8 = videoUrl.contains(".m3u8"),
-                    isDash = videoUrl.contains(".mpd")
-                )
-                
-                callback.invoke(link)
-            }
-            return true
-        }
-        
-        // Tentar encontrar player iframe
-        val iframeSrc = document.selectFirst("iframe[src]")?.attr("src")
-        if (!iframeSrc.isNullOrEmpty()) {
-            println("SuperFlix: loadLinks - Iframe encontrado: $iframeSrc")
-            // Recursivamente tentar extrair do iframe
-            return loadLinks(fixUrl(iframeSrc), isCasting, subtitleCallback, callback)
-        }
-        
-    } catch (e: Exception) {
-        println("SuperFlix: loadLinks - ERRO ao extrair da página: ${e.message}")
-    }
-
-    // Última tentativa: usar extractor genérico
-    println("SuperFlix: loadLinks - Tentando loadExtractor genérico")
-    return try {
-        val result = loadExtractor(data, subtitleCallback, callback)
-        println("SuperFlix: loadLinks - loadExtractor retornou: $result")
-        result
-    } catch (e: Exception) {
-        println("SuperFlix: loadLinks - ERRO EXCEÇÃO: ${e.message}")
-        false
-    }
-}
-
-private fun findVideoUrlsInHtml(html: String): List<String> {
-    val videoUrls = mutableListOf<String>()
-    
-    // Padrões para buscar URLs de vídeo
-    val patterns = listOf(
-        Regex("""src\s*=\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""file\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""video\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""url\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex("""source\s*:\s*["']([^"']+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"']*)["']""", RegexOption.IGNORE_CASE),
-        Regex(""""contentUrl"\s*:\s*"([^"]+\.(?:mp4|m4v|mkv|avi|mov|flv|wmv|webm|3gp|ts|m4s|m3u8|mpd)[^"]*)"""", RegexOption.IGNORE_CASE)
-    )
-    
-    patterns.forEach { pattern ->
-        pattern.findAll(html).forEach { match ->
-            val url = match.groupValues.getOrNull(1) ?: return@forEach
-            if (url.startsWith("http") && isVideoUrl(url)) {
-                videoUrls.add(fixUrl(url))
+                if (sniffedUrls.isNotEmpty()) {
+                    println("SuperFlix: loadLinks - Listando URLs encontradas:")
+                    sniffedUrls.forEachIndexed { index, url ->
+                        println("SuperFlix: loadLinks -   [$index] $url")
+                        
+                        // Para cada URL encontrada, tentar usar extractor
+                        if (loadExtractor(url, subtitleCallback, callback)) {
+                            println("SuperFlix: loadLinks - Extractor encontrou links para: $url")
+                            return true
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("SuperFlix: loadLinks - ERRO no sniffing: ${e.message}")
+                e.printStackTrace()
             }
         }
+
+        // Método tradicional: procurar iframes primeiro
+        println("SuperFlix: loadLinks - Tentando método tradicional (iframes)")
+        try {
+            val document = app.get(data).document
+            
+            // Procurar por iframes primeiro (players embutidos)
+            val iframes = document.select("iframe[src]")
+            println("SuperFlix: loadLinks - Iframes encontrados: ${iframes.size}")
+            
+            for (iframe in iframes) {
+                val iframeSrc = iframe.attr("src")
+                if (iframeSrc.isNotBlank()) {
+                    println("SuperFlix: loadLinks - Tentando extrair do iframe: $iframeSrc")
+                    if (loadExtractor(fixUrl(iframeSrc), subtitleCallback, callback)) {
+                        return true
+                    }
+                }
+            }
+            
+            // Procurar por links de vídeo
+            val videoLinks = document.select("a[href*='.m3u8'], a[href*='.mp4'], a[href*='.mpd'], button[data-url]")
+            println("SuperFlix: loadLinks - Links/buttons de vídeo encontrados: ${videoLinks.size}")
+            
+            for (link in videoLinks) {
+                val href = link.attr("href").takeIf { it.isNotBlank() } ?: link.attr("data-url")
+                if (!href.isNullOrBlank() && isVideoUrl(href)) {
+                    println("SuperFlix: loadLinks - Tentando extrair do link: $href")
+                    if (loadExtractor(fixUrl(href), subtitleCallback, callback)) {
+                        return true
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            println("SuperFlix: loadLinks - ERRO no método tradicional: ${e.message}")
+        }
+
+        // Último recurso: tentar extractor genérico na URL original
+        println("SuperFlix: loadLinks - Último recurso: extractor genérico")
+        return try {
+            val result = loadExtractor(data, subtitleCallback, callback)
+            println("SuperFlix: loadLinks - loadExtractor retornou: $result")
+            result
+        } catch (e: Exception) {
+            println("SuperFlix: loadLinks - ERRO FINAL: ${e.message}")
+            false
+        }
     }
-    
-    return videoUrls.distinct()
-}
 
     // ========== MÉTODOS DE NETWORK SNIFFING ==========
     
     private suspend fun sniffVideoUrls(pageUrl: String): List<String> {
-        val videoUrls = mutableSetOf<String>()
+        val videoUrls = mutableSet<String>()
         
         try {
             println("SuperFlix: sniffVideoUrls - Iniciando sniffing em: $pageUrl")
