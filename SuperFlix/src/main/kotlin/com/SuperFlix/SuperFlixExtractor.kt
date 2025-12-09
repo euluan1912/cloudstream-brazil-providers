@@ -16,7 +16,7 @@ object SuperFlixExtractor {
         url: String,
         mainUrl: String,
         name: String,
-        callback: (ExtractorLink) -> Unit
+        callback: (newExtractorLink) -> Unit
     ): Boolean {
         println("SFX Extractor: Iniciando extração via WebViewResolver para URL: $url")
 
