@@ -71,8 +71,6 @@ Só pedimos uma coisa: mantenha os créditos, por favor. É o mínimo, né? 😉
 # 🤝 Créditos & Inspiração  
 Este repo existe graças à inspiração do **saimuelrepo**, o pioneiro dos repositórios BR de CloudStream. O trabalho do cara é de respeito.
 
-Ah, e sim, **até este README foi ajudado por uma IA**. Porque, no fim, a única certeza é a incerteza...
-
 ---
 
 <div align="center">
