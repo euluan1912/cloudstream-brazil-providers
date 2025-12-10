@@ -224,14 +224,21 @@ class SuperFlix : MainAPI() {
     private fun getHighQualityTrailer(videos: List<TMDBVideo>?): String? {
         return videos?.mapNotNull { video ->
             when {
-                video.site == "YouTube" && video.type == "Trailer" ->
-                    Triple(video.key, 5, "YouTube Trailer")
-                video.site == "YouTube" && video.type == "Teaser" ->
-                    Triple(video.key, 3, "YouTube Teaser")
+                // Prioridade: Vimeo Trailers (melhor qualidade geralmente)
                 video.site == "Vimeo" && video.type == "Trailer" ->
-                    Triple(video.key, 4, "Vimeo Trailer")
+                    Triple(video.key, 10, "Vimeo Trailer")
+                // YouTube Trailers com qualidade otimizada
+                video.site == "YouTube" && video.type == "Trailer" ->
+                    Triple(video.key, 8, "YouTube Trailer")
+                // Vimeo Teasers
                 video.site == "Vimeo" && video.type == "Teaser" ->
-                    Triple(video.key, 2, "Vimeo Teaser")
+                    Triple(video.key, 7, "Vimeo Teaser")
+                // YouTube Teasers
+                video.site == "YouTube" && video.type == "Teaser" ->
+                    Triple(video.key, 6, "YouTube Teaser")
+                // Outros tipos de vídeo do YouTube
+                video.site == "YouTube" && (video.type == "Clip" || video.type == "Featurette") ->
+                    Triple(video.key, 5, "YouTube Clip")
                 else -> null
             }
         }
@@ -239,9 +246,20 @@ class SuperFlix : MainAPI() {
         ?.firstOrNull()
         ?.let { (key, _, site) ->
             when {
-                site.startsWith("Vimeo") -> "https://vimeo.com/$key"
-                key.startsWith("http") -> key
-                else -> key
+                site.startsWith("Vimeo") -> {
+                    // Vimeo: URL completa para melhor qualidade
+                    if (key.startsWith("http")) key else "https://vimeo.com/$key"
+                }
+                key.startsWith("http") -> {
+                    // Já é URL completa
+                    key
+                }
+                else -> {
+                    // YouTube: URL de watch para melhor qualidade
+                    // O YouTube decide a qualidade baseado na conexão do usuário
+                    // Esta URL geralmente permite mais controles de qualidade
+                    "https://www.youtube.com/watch?v=$key"
+                }
             }
         }
     }
@@ -343,18 +361,8 @@ class SuperFlix : MainAPI() {
                     addActors(actors)
                 }
 
-                // Adiciona trailer com URL que força qualidade máxima
-                tmdbInfo.youtubeTrailer?.let { trailerKey ->
-                    val trailerUrl = when {
-                        trailerKey.contains("vimeo.com") -> trailerKey
-                        trailerKey.startsWith("http") -> trailerKey
-                        else -> {
-                            // YouTube - Força qualidade HD quando possível
-                            // O parâmetro vq=hd1080 não é mais suportado, mas mantemos para compatibilidade
-                            // O YouTube decide automaticamente a melhor qualidade baseada na conexão
-                            "https://www.youtube.com/embed/$trailerKey?rel=0&showinfo=0&modestbranding=1&autoplay=1"
-                        }
-                    }
+                // Adiciona trailer
+                tmdbInfo.youtubeTrailer?.let { trailerUrl ->
                     addTrailer(trailerUrl)
                 }
 
@@ -380,17 +388,8 @@ class SuperFlix : MainAPI() {
                     addActors(actors)
                 }
 
-                // Adiciona trailer com URL que força qualidade máxima
-                tmdbInfo.youtubeTrailer?.let { trailerKey ->
-                    val trailerUrl = when {
-                        trailerKey.contains("vimeo.com") -> trailerKey
-                        trailerKey.startsWith("http") -> trailerKey
-                        else -> {
-                            // YouTube - Força qualidade HD quando possível
-                            // Usando embed com autoplay e controles
-                            "https://www.youtube.com/embed/$trailerKey?rel=0&showinfo=0&modestbranding=1&autoplay=1"
-                        }
-                    }
+                // Adiciona trailer
+                tmdbInfo.youtubeTrailer?.let { trailerUrl ->
                     addTrailer(trailerUrl)
                 }
 
