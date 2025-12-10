@@ -1,75 +1,88 @@
-<h1 align="center">Hi 👋, I'm Luan</h1>
-<h3 align="center">Brazilian extension for CloudStream 3 — indexing movies, series, and anime for the community.</h3>
+<div align="center">
+
+<img src="https://media1.tenor.com/m/0j2SrBcInToAAAAC/l-lawliet-death-note.gif" width="180"/>
+
+# 👋 Oi… eu sou o **L**
+## (Sim, *aquele* L. Faz o L aí 😎)
+
+### 🇧🇷 Extensão BR pro CloudStream 3 — simples, direta, rápida e feita pra te dar a melhor experiência possível.  
+### 🇺🇸 BR extension for CloudStream 3 — simple, fast and made to give you the best experience possible.
+
+</div>
 
 ---
 
-## 🇧🇷 Sobre o projeto / About the project 🇺🇸
+# 🇧🇷 Sobre o projeto  
+O **lietrepo** é meu cantinho onde eu mexo nos plugins do CloudStream 3.  
+Nada de enrolação: eu só quero que você abra o app e *pá*, tudo funcione bonito.
 
-Este repositório está em desenvolvimento e foi inspirado no trabalho do <b>Saimuel</b>.  
-Assim como ele, meu objetivo é expandir a disponibilidade de conteúdo gratuito indexando sites públicos para uso no CloudStream 3.
-
-This repository is currently under development and inspired by <b>Saimuel's project</b>.  
-Just like him, my goal is to expand the availability of free content by indexing public websites for CloudStream 3.
-
-🚀 **Este projeto está sendo desenvolvido com auxílio de IA.**  
-🚀 **This project is being developed with the assistance of AI.**
-
----
-
-<p>- 🔭 I’m currently working on <a href="https://github.com/euluan1912/cloudstream-brazil-providers">cloudstream-brazil-providers</a></p>
-<p>- 🌱 I’m currently learning <b>Kotlin</b> to improve this project</p>
+Trago o melhor que dá pra trazer dentro do CloudStream:
+- 🎬 **TMDB turbinado** — posters em Full HD, trailers, sinopses, elenco e tudo que deixa o app bonitão  
+- ⏭️ **Anime Skip** — pode pular aquela abertura que você já ouviu 89 vezes  
+- ⚡ **Coisas rápidas e que não travam**  
+- 💬 **Sugestões? Pode mandar. Eu realmente leio tudo.**  
+- 😎 **Objetivo: maximizar o entretenimento** (porque o mundo já é chato demais)
 
 ---
 
-<h3 align="left">Languages and Tools:</h3>
-<p align="left">
-<a href="https://developer.android.com" target="_blank" rel="noreferrer">
-<img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/android/android-original-wordmark.svg" alt="android" width="40" height="40"/>
-</a>
-<a href="https://git-scm.com/" target="_blank" rel="noreferrer">
-<img src="https://www.vectorlogo.zone/logos/git-scm/git-scm-icon.svg" alt="git" width="40" height="40"/>
-</a>
-<a href="https://kotlinlang.org" target="_blank" rel="noreferrer">
-<img src="https://www.vectorlogo.zone/logos/kotlinlang/kotlinlang-icon.svg" alt="kotlin" width="40" height="40"/>
-</a>
-</p>
+# 🇺🇸 About the project  
+The **lietrepo** is my little place where I mess with CloudStream 3 plugins.  
+No fancy words — I just want you to open the app and *boom*, everything works smoothly.
+
+What you get here:
+- 🎬 **Boosted TMDB metadata** — Full HD posters, trailers, descriptions, cast  
+- ⏭️ **Anime Skip** — skip that opening you’ve heard 89 times  
+- ⚡ **Fast & stable providers**  
+- 💬 **Suggestions? Send them, I actually read.**  
+- 😎 **Goal: maximize your entertainment** (life is already stressful enough)
 
 ---
 
-## 📜 License
-
-This repository is licensed under the <a href="https://opensource.org/license/mit-0" target="_blank"><b>MIT License</b></a>.  
-You are free to use, copy, modify, merge, publish, and distribute this code as long as proper credit is maintained.
-
-Este repositório está licenciado sob a <a href="https://opensource.org/license/mit-0" target="_blank"><b>MIT License</b></a>.  
-Você pode usar, copiar, modificar, mesclar, publicar e distribuir este código livremente, desde que mantenha os devidos créditos.
+# 🛠️ Tecnologias que eu usei / Things I used
+Kotlin • Git • Android • Café na veia
 
 ---
 
-## ⚠️ Legal Disclaimer / Aviso Legal
+# ⚠️ Disclaimer Legal / Legal Disclaimer
 
-<b>English:</b>  
-• I do NOT host any movies, series, anime, or copyrighted content.  
-• The plugins in this repository only index publicly accessible websites for CloudStream 3.  
-• I take NO responsibility for how others use this repository. Usage is entirely at the user's own risk.
+**Português:**  
+Este projeto não hospeda, transmite, armazena ou distribui qualquer filme, série, anime ou conteúdo protegido por direitos autorais.  
+Os plugins presentes neste repositório **apenas indexam** páginas que são publicamente acessíveis na internet, funcionando de maneira semelhante a um navegador.  
+Nenhum arquivo é armazenado ou enviado por mim ou pelo CloudStream 3.  
+Todo o conteúdo visualizado provém exclusivamente de **sites terceiros**, que são responsáveis pelos próprios arquivos.  
+Se algum material violar direitos autorais, solicitações de remoção devem ser direcionadas **ao provedor que hospeda o conteúdo**, e não a este repositório ou aos desenvolvedores do CloudStream 3.
 
-<b>Português:</b>  
-• Eu NÃO hospedo filmes, séries, animes ou qualquer conteúdo protegido por direitos autorais.  
-• Os plugins apenas indexam sites públicos para o CloudStream 3.  
-• Não assumo qualquer responsabilidade pelo uso deste repositório por terceiros.
+**English:**  
+This project does not host, stream, store, or distribute any copyrighted content.  
+The plugins in this repository **only index** publicly accessible websites, functioning similarly to a web browser.  
+No files are stored or transmitted by me or by CloudStream 3.  
+All content comes exclusively from **third-party providers**, who are responsible for the files they host.  
+If any content infringes copyright, DMCA/Removal requests must be addressed **to the hosting provider**, not to this repository or to the CloudStream 3 developers.
+
+---
+
+# 📜 MIT License  
+O código é livre. Pode usar, copiar, editar, mexer à vontade.  
+Só não tira os créditos, né… não vacila 😅
+
+The code is free. You can use it, copy it, edit it.  
+Just don’t remove credits — don’t be that guy 😅
 
 ---
 
-## ⚖️ DMCA Notice / Aviso DMCA
+# 🤝 Créditos & Inspiração  
+Esse repo foi **inspirado no saimuelrepo**, primeiro repo BR de CloudStream.  
+O cara é simplesmente brabo.
 
-<b>English:</b>  
-This project is for educational purposes only and functions similarly to a web browser, simply indexing publicly available video files.  
-No content is hosted here or by CloudStream 3. All content is hosted by third-party providers.  
-If you believe something violates copyright, contact the hosting provider, not the developers.
-
-<b>Português:</b>  
-Este projeto tem caráter educacional e funciona como um navegador, apenas buscando vídeos disponíveis publicamente.  
-Nenhum conteúdo é hospedado aqui ou pelo CloudStream 3. Todo conteúdo é hospedado por sites de terceiros.  
-Se algum conteúdo violar direitos autorais, contate o provedor que hospeda o arquivo, não os desenvolvedores.
+E sim… **até esse README teve ajuda de IA**.  
+Nada mais é 100% confiável hoje em dia — nem eu, nem você, nem esse L olhando pra sua alma.
 
 ---
+
+<div align="center">
+
+### Valeu por passar aqui. Agora vai lá aproveitar.  
+### Thanks for stopping by — now go enjoy it.  
+### *Faz o L.* 😎
+
+</div>
