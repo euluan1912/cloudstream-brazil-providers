@@ -1,3 +1,96 @@
+não temos como exibir as outras qualidades? pegar todas elas?
+
+Infelizmente, não é possível para um plugin do CloudStream forçar o YouTube a fornecer links de maior qualidade diretamente dentro do app.
+
+O problema é que os links do YouTube são fornecidos dinamicamente e temporariamente pelo próprio servidor do YouTube. O itag=18 (360p) é o que você recebeu, mas outros itags (como 22 para 720p ou 137 para 1080p) existem para aquele vídeo. Contudo:
+
+1. Os links são temporários (expiração no URL) e específicos para cada solicitação.
+2. O YouTube escolhe automaticamente a qualidade que vai entregar, baseado em fatores como o agente do usuário (user-agent) que está fazendo a requisição. O CloudStream provavelmente está sendo identificado como um dispositivo móvel com limitação de largura.
+3. Forçar outro itag não funciona, pois cada link tem uma assinatura digital (sig=...). Sem a assinatura correta, o link é rejeitado.
+
+🧪 Alternativas mais avançadas (mas com limitações)
+
+Para um plugin dentro do CloudStream, o único caminho viável (embora incerto) seria simular uma requisição de um navegador desktop para "enganar" o YouTube e receber links de maior qualidade. Isso envolve:
+
+1. Usar um User-Agent personalizado na requisição ao TMDB/YouTube, como de um navegador desktop.
+2. Usar um extrator especializado em YouTube (se houver um disponível no framework do CloudStream).
+
+Aqui está como você poderia modificar o código para tentar uma abordagem mais agressiva na função que faz requisições ao TMDB:
+
+```kotlin
+private suspend fun getTMDBDetailsWithFullCredits(id: Int, isTv: Boolean): TMDBDetailsResponse? {
+    return try {
+        val type = if (isTv) "tv" else "movie"
+        val url = "$tmdbBaseUrl/$type/$id?" +
+                 "api_key=$tmdbApiKey" +
+                 "&language=pt-BR" +
+                 "&append_to_response=credits,videos,recommendations"
+
+        // TENTATIVA 1: Simular uma requisição de navegador desktop
+        val desktopHeaders = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language" to "pt-BR,pt;q=0.9,en;q=0.8"
+        )
+        
+        // Usar o cabeçalho personalizado na requisição
+        val response = app.get(url, headers = desktopHeaders, timeout = 10_000)
+        val details = response.parsedSafe<TMDBDetailsResponse>()
+
+        details
+    } catch (e: Exception) {
+        null
+    }
+}
+```
+
+E modificar a função que busca os trailers para priorizar Vimeo (que costuma ter melhor controle de qualidade):
+
+```kotlin
+private fun getHighQualityTrailer(videos: List<TMDBVideo>?): String? {
+    return videos?.mapNotNull { video ->
+        when {
+            // PRIORIDADE MÁXIMA: Vimeo (mais controlável)
+            video.site == "Vimeo" && (video.type == "Trailer" || video.type == "Teaser") ->
+                Triple(video.key, 15, "Vimeo")
+            // YouTube Trailers
+            video.site == "YouTube" && video.type == "Trailer" ->
+                Triple(video.key, 10, "YouTube Trailer")
+            // YouTube Teasers
+            video.site == "YouTube" && video.type == "Teaser" ->
+                Triple(video.key, 8, "YouTube Teaser")
+            else -> null
+        }
+    }
+    ?.sortedByDescending { it.second }
+    ?.firstOrNull()
+    ?.let { (key, _, site) ->
+        when {
+            site == "Vimeo" -> {
+                // Vimeo: URL de embed geralmente tem melhor controle
+                if (key.startsWith("http")) key else "https://player.vimeo.com/video/$key"
+            }
+            key.startsWith("http") -> key
+            else -> {
+                // YouTube: manter URL simples
+                "https://www.youtube.com/watch?v=$key"
+            }
+        }
+    }
+}
+```
+
+⚠️ Limitações e Conclusão Prática
+
+Mesmo com essas modificações:
+
+· É uma tentativa: Não há garantia de que o YouTube fornecerá um link de maior qualidade (itag) mesmo com o User-Agent de desktop.
+· A qualidade final ainda depende do player dentro do CloudStream, que pode rebaixar a qualidade.
+
+Portanto, a recomendação mais pragmática para um plugin funcional e confiável ainda é simplesmente remover os trailers ou aceitar que eles sempre aparecerão em baixa qualidade.
+
+Se você deseja que eu ajude a implementar uma dessas opções (remover completamente ou tentar a solução com User-Agent), posso fornecer o código específico para a alteração.
+
 package com.SuperFlix
 
 import com.lagradost.cloudstream3.*
@@ -22,9 +115,6 @@ class SuperFlix : MainAPI() {
     private val tmdbBaseUrl = "https://api.themoviedb.org/3"
     private val tmdbImageUrl = "https://image.tmdb.org/t/p"
 
-    // User-Agent de navegador desktop para tentar obter links de melhor qualidade
-    private val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    
     override val mainPage = mainPageOf(
         "$mainUrl/lancamentos" to "Lançamentos",
         "$mainUrl/filmes" to "Últimos Filmes",
@@ -209,16 +299,10 @@ class SuperFlix : MainAPI() {
     private fun getHighQualityTrailer(videos: List<TMDBVideo>?): String? {
         return videos?.mapNotNull { video ->
             when {
-                // PRIORIDADE 1: Vimeo (geralmente tem melhor controle de qualidade)
-                video.site == "Vimeo" && (video.type == "Trailer" || video.type == "Teaser") ->
-                    Triple(video.key, 15, "Vimeo")
-                // PRIORIDADE 2: YouTube Trailers
                 video.site == "YouTube" && video.type == "Trailer" ->
                     Triple(video.key, 10, "YouTube Trailer")
-                // PRIORIDADE 3: YouTube Teasers
                 video.site == "YouTube" && video.type == "Teaser" ->
                     Triple(video.key, 8, "YouTube Teaser")
-                // PRIORIDADE 4: Outros vídeos do YouTube
                 video.site == "YouTube" && (video.type == "Clip" || video.type == "Featurette") ->
                     Triple(video.key, 5, "YouTube Clip")
                 else -> null
@@ -226,19 +310,10 @@ class SuperFlix : MainAPI() {
         }
         ?.sortedByDescending { it.second }
         ?.firstOrNull()
-        ?.let { (key, _, site) ->
-            when {
-                site == "Vimeo" -> {
-                    // Vimeo: URL de embed com qualidade controlável
-                    if (key.startsWith("http")) key else "https://player.vimeo.com/video/$key"
-                }
-                key.startsWith("http") -> key
-                else -> {
-                    // YouTube: URL completa para permitir que o YouTube otimize a qualidade
-                    // e adicionamos parâmetros para tentar forçar melhor qualidade
-                    "https://www.youtube.com/watch?v=$key&rel=0&showinfo=0&autoplay=1"
-                }
-            }
+        ?.let { (key, _, _) ->
+            // SOLUÇÃO: Usar URL completa do YouTube como o TMDB faz
+            // Esta URL permite que o YouTube otimize a qualidade automaticamente
+            "https://www.youtube.com/watch?v=$key"
         }
     }
 
@@ -250,36 +325,10 @@ class SuperFlix : MainAPI() {
                      "&language=pt-BR" +
                      "&append_to_response=credits,videos,recommendations"
 
-            // TENTATIVA: Simular uma requisição de navegador desktop
-            // usando headers personalizados para tentar obter melhores links
-            val desktopHeaders = mapOf(
-                "User-Agent" to desktopUserAgent,
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language" to "pt-BR,pt;q=0.9,en;q=0.8",
-                "Accept-Encoding" to "gzip, deflate, br",
-                "Connection" to "keep-alive",
-                "Upgrade-Insecure-Requests" to "1"
-            )
-            
-            // Usar o cabeçalho personalizado na requisição ao TMDB
-            val response = app.get(url, headers = desktopHeaders, timeout = 15_000)
-            val details = response.parsedSafe<TMDBDetailsResponse>()
-
-            details
+            val response = app.get(url, timeout = 10_000)
+            response.parsedSafe<TMDBDetailsResponse>()
         } catch (e: Exception) {
-            // Fallback: tentar sem headers personalizados se falhar
-            try {
-                val type = if (isTv) "tv" else "movie"
-                val url = "$tmdbBaseUrl/$type/$id?" +
-                         "api_key=$tmdbApiKey" +
-                         "&language=pt-BR" +
-                         "&append_to_response=credits,videos,recommendations"
-                
-                val response = app.get(url, timeout = 10_000)
-                response.parsedSafe<TMDBDetailsResponse>()
-            } catch (e2: Exception) {
-                null
-            }
+            null
         }
     }
 
@@ -289,8 +338,8 @@ class SuperFlix : MainAPI() {
                                   "api_key=$tmdbApiKey" +
                                   "&language=pt-BR"
 
-            val response = app.get(seriesDetailsUrl, timeout = 10_000)
-            val seriesDetails = response.parsedSafe<TMDBTVDetailsResponse>()
+            val seriesResponse = app.get(seriesDetailsUrl, timeout = 10_000)
+            val seriesDetails = seriesResponse.parsedSafe<TMDBTVDetailsResponse>()
 
             val seasonsEpisodes = mutableMapOf<Int, List<TMDBEpisode>>()
 
