@@ -121,6 +121,12 @@ class SuperFlix : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
 
+        // Extrair rating do site
+        val rating = extractRatingFromSite(document)
+        
+        // Verificar se há rating no TMDB (se não tiver no site, usa do TMDB)
+        val tmdbRating = rating ?: extractTMDBRating(document)
+
         val titleElement = document.selectFirst("h1, .title")
         val title = titleElement?.text() ?: return null
 
@@ -131,6 +137,11 @@ class SuperFlix : MainAPI() {
         val isSerie = url.contains("/serie/") || url.contains("/tv/") ||
                      (!isAnime && document.selectFirst(".episode-list, .season-list, .seasons") != null)
 
+        // Extrair outras informações do site
+        val duration = document.selectFirst(".duration, .runtime, time")?.text()?.trim()
+        val tags = extractTagsFromSite(document)
+        val cast = extractCastFromSite(document)
+
         val tmdbInfo = if (isAnime || isSerie) {
             searchOnTMDB(cleanTitle, year, true)
         } else {
@@ -140,10 +151,75 @@ class SuperFlix : MainAPI() {
         val siteRecommendations = extractRecommendationsFromSite(document)
 
         return if (tmdbInfo != null) {
-            createLoadResponseWithTMDB(tmdbInfo, url, document, isAnime, isSerie, siteRecommendations)
+            createLoadResponseWithTMDB(tmdbInfo, url, document, isAnime, isSerie, siteRecommendations, rating ?: tmdbRating, duration, tags, cast)
         } else {
-            createLoadResponseFromSite(document, url, cleanTitle, year, isAnime, isSerie)
+            createLoadResponseFromSite(document, url, cleanTitle, year, isAnime, isSerie, rating ?: tmdbRating, duration, tags, cast)
         }
+    }
+
+    private fun extractRatingFromSite(document: org.jsoup.nodes.Document): Int? {
+        return try {
+            // Tentar encontrar rating em vários locais comuns
+            val ratingSelectors = listOf(
+                ".rating", 
+                ".imdb", 
+                ".score", 
+                ".vote", 
+                "[class*='rating']", 
+                "[class*='imdb']",
+                ".fs-item > .imdb",
+                ".meta-rating",
+                ".value"
+            )
+            
+            for (selector in ratingSelectors) {
+                document.selectFirst(selector)?.text()?.trim()?.let { ratingText ->
+                    // Extrair números da string (ex: "IMDB: 7.5/10", "8.2", "75%")
+                    val regex = Regex("""(\d+(?:\.\d+)?)""")
+                    val match = regex.find(ratingText)
+                    match?.groupValues?.get(1)?.toFloatOrNull()?.let { ratingValue ->
+                        // Converter para escala 0-10000
+                        return when {
+                            ratingText.contains("/10") || ratingText.contains("IMDB") -> 
+                                (ratingValue * 1000).toInt() // 7.5 -> 7500
+                            ratingText.contains("/5") -> 
+                                (ratingValue * 2000).toInt() // 4.5 -> 9000
+                            ratingText.contains("%") -> 
+                                (ratingValue * 100).toInt() // 75% -> 7500
+                            ratingValue <= 1.0 -> 
+                                (ratingValue * 10000).toInt() // 0.75 -> 7500
+                            ratingValue <= 10.0 -> 
+                                (ratingValue * 1000).toInt() // 7.5 -> 7500
+                            ratingValue <= 100.0 -> 
+                                ratingValue.toInt() * 100 // 75 -> 7500
+                            else -> 
+                                ratingValue.toInt() // Já está na escala correta
+                        }
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun extractTMDBRating(document: org.jsoup.nodes.Document): Int? {
+        // Esta função pode ser usada para extrair rating do TMDB se necessário
+        // Por enquanto retorna null, pois o rating já é extraído do TMDB no searchOnTMDB
+        return null
+    }
+
+    private fun extractTagsFromSite(document: org.jsoup.nodes.Document): List<String>? {
+        return document.select("a.chip, .chip, .genre, .tags, .category, a[href*='/genre/'], a[href*='/category/']")
+            .mapNotNull { it.text().trim() }
+            .takeIf { it.isNotEmpty() }
+    }
+
+    private fun extractCastFromSite(document: org.jsoup.nodes.Document): List<String>? {
+        return document.select(".cast-list a, .actors a, .starring a, [class*='cast'] a, [class*='actor'] a")
+            .mapNotNull { it.text().trim() }
+            .takeIf { it.isNotEmpty() }
     }
 
     private suspend fun searchOnTMDB(query: String, year: Int?, isTv: Boolean): TMDBInfo? {
@@ -171,6 +247,9 @@ class SuperFlix : MainAPI() {
                 emptyMap()
             }
 
+            // Extrair rating do TMDB (está em escala 0-10, converter para 0-10000)
+            val tmdbRating = details?.vote_average?.let { (it * 1000).toInt() }
+
             val allActors = details?.credits?.cast?.mapNotNull { actor ->
                 if (actor.name.isNotBlank()) {
                     Actor(
@@ -196,7 +275,8 @@ class SuperFlix : MainAPI() {
                 actors = allActors?.take(15),
                 youtubeTrailer = youtubeTrailer,
                 duration = if (!isTv) details?.runtime else null,
-                seasonsEpisodes = seasonEpisodes
+                seasonsEpisodes = seasonEpisodes,
+                rating = tmdbRating
             )
         } catch (e: Exception) {
             null
@@ -218,8 +298,6 @@ class SuperFlix : MainAPI() {
         ?.sortedByDescending { it.second }
         ?.firstOrNull()
         ?.let { (key, _, _) ->
-            // SOLUÇÃO: Usar URL completa do YouTube como o TMDB faz
-            // Esta URL permite que o YouTube otimize a qualidade automaticamente
             "https://www.youtube.com/watch?v=$key"
         }
     }
@@ -284,7 +362,11 @@ class SuperFlix : MainAPI() {
         document: org.jsoup.nodes.Document,
         isAnime: Boolean,
         isSerie: Boolean,
-        siteRecommendations: List<SearchResponse>
+        siteRecommendations: List<SearchResponse>,
+        rating: Int?,
+        duration: String?,
+        tags: List<String>?,
+        cast: List<String>?
     ): LoadResponse {
         return if (isAnime || isSerie) {
             val episodes = extractEpisodesWithTMDBInfo(
@@ -307,10 +389,19 @@ class SuperFlix : MainAPI() {
                 this.backgroundPosterUrl = tmdbInfo.backdropUrl
                 this.year = tmdbInfo.year
                 this.plot = tmdbInfo.overview
-                this.tags = tmdbInfo.genres
-
-                tmdbInfo.actors?.let { actors ->
-                    addActors(actors)
+                this.tags = tags ?: tmdbInfo.genres
+                this.rating = rating ?: tmdbInfo.rating
+                
+                // Adicionar duração se disponível
+                duration?.let { addDuration(it) }
+                
+                // Adicionar elenco do site ou do TMDB
+                if (cast != null && cast.isNotEmpty()) {
+                    addActors(cast.map { Actor(it) })
+                } else {
+                    tmdbInfo.actors?.let { actors ->
+                        addActors(actors)
+                    }
                 }
 
                 tmdbInfo.youtubeTrailer?.let { trailerUrl ->
@@ -332,11 +423,23 @@ class SuperFlix : MainAPI() {
                 this.backgroundPosterUrl = tmdbInfo.backdropUrl
                 this.year = tmdbInfo.year
                 this.plot = tmdbInfo.overview
-                this.tags = tmdbInfo.genres
-                this.duration = tmdbInfo.duration
-
-                tmdbInfo.actors?.let { actors ->
-                    addActors(actors)
+                this.tags = tags ?: tmdbInfo.genres
+                this.rating = rating ?: tmdbInfo.rating
+                
+                // Adicionar duração do site ou do TMDB
+                if (duration != null) {
+                    addDuration(duration)
+                } else {
+                    this.duration = tmdbInfo.duration
+                }
+                
+                // Adicionar elenco do site ou do TMDB
+                if (cast != null && cast.isNotEmpty()) {
+                    addActors(cast.map { Actor(it) })
+                } else {
+                    tmdbInfo.actors?.let { actors ->
+                        addActors(actors)
+                    }
                 }
 
                 tmdbInfo.youtubeTrailer?.let { trailerUrl ->
@@ -531,7 +634,11 @@ class SuperFlix : MainAPI() {
         title: String,
         year: Int?,
         isAnime: Boolean,
-        isSerie: Boolean
+        isSerie: Boolean,
+        rating: Int?,
+        duration: String?,
+        tags: List<String>?,
+        cast: List<String>?
     ): LoadResponse {
         val ogImage = document.selectFirst("meta[property='og:image']")?.attr("content")
         val poster = ogImage?.let { fixUrl(it) }
@@ -539,9 +646,6 @@ class SuperFlix : MainAPI() {
         val description = document.selectFirst("meta[name='description']")?.attr("content")
         val synopsis = document.selectFirst(".syn, .description, .sinopse, .plot")?.text()
         val plot = description ?: synopsis
-
-        val tags = document.select("a.chip, .chip, .genre, .tags").map { it.text() }
-            .takeIf { it.isNotEmpty() }?.toList()
 
         val siteRecommendations = extractRecommendationsFromSite(document)
 
@@ -554,6 +658,16 @@ class SuperFlix : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
+                this.rating = rating
+                
+                // Adicionar duração se disponível
+                duration?.let { addDuration(it) }
+                
+                // Adicionar elenco se disponível
+                cast?.let {
+                    addActors(it.map { actorName -> Actor(actorName) })
+                }
+
                 this.recommendations = siteRecommendations.takeIf { it.isNotEmpty() }
             }
         } else {
@@ -563,6 +677,16 @@ class SuperFlix : MainAPI() {
                 this.year = year
                 this.plot = plot
                 this.tags = tags
+                this.rating = rating
+                
+                // Adicionar duração se disponível
+                duration?.let { addDuration(it) }
+                
+                // Adicionar elenco se disponível
+                cast?.let {
+                    addActors(it.map { actorName -> Actor(actorName) })
+                }
+
                 this.recommendations = siteRecommendations.takeIf { it.isNotEmpty() }
             }
         }
@@ -597,7 +721,8 @@ class SuperFlix : MainAPI() {
         val actors: List<Actor>?,
         val youtubeTrailer: String?,
         val duration: Int?,
-        val seasonsEpisodes: Map<Int, List<TMDBEpisode>> = emptyMap()
+        val seasonsEpisodes: Map<Int, List<TMDBEpisode>> = emptyMap(),
+        val rating: Int? = null
     )
 
     private data class TMDBEpisode(
@@ -628,7 +753,8 @@ class SuperFlix : MainAPI() {
         @JsonProperty("runtime") val runtime: Int?,
         @JsonProperty("genres") val genres: List<TMDBGenre>?,
         @JsonProperty("credits") val credits: TMDBCredits?,
-        @JsonProperty("videos") val videos: TMDBVideos?
+        @JsonProperty("videos") val videos: TMDBVideos?,
+        @JsonProperty("vote_average") val vote_average: Float?
     )
 
     private data class TMDBTVDetailsResponse(
