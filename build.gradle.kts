@@ -33,7 +33,7 @@ subprojects {
 
     cloudstream {
         setRepo("https://github.com/euluanzz/lawlietbr")
-        authors = listOf("euluanzz")
+        authors = listOf("lawlietbr")
     }
 
     android {
