@@ -10,3 +10,9 @@
 .cxx
 local.properties
 .vscodetest.txt
+SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt
+*.template.backup
+SuperFlix/build/
+.gradle/
+build/
+.DS_Store
