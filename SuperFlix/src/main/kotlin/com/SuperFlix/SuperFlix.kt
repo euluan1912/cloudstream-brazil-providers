@@ -153,7 +153,7 @@ class SuperFlix : MainAPI() {
             val yearParam = year?.let { "&year=$it" } ?: ""
 
             val searchUrl = "$tmdbBaseUrl/search/$type?" +
-                           "api_key=$tmdbApiKey" +
+                           "api_key=${BuildConfig.TMDB_API_KEY}" +
                            "&language=pt-BR" +
                            "&query=$encodedQuery" +
                            yearParam +
@@ -228,7 +228,7 @@ class SuperFlix : MainAPI() {
         return try {
             val type = if (isTv) "tv" else "movie"
             val url = "$tmdbBaseUrl/$type/$id?" +
-                     "api_key=$tmdbApiKey" +
+                     "api_key=${BuildConfig.TMDB_API_KEY}" +
                      "&language=pt-BR" +
                      "&append_to_response=credits,videos,recommendations"
 
@@ -269,7 +269,7 @@ class SuperFlix : MainAPI() {
     private suspend fun getTMDBSeasonDetails(seriesId: Int, seasonNumber: Int): TMDBSeasonResponse? {
         return try {
             val url = "$tmdbBaseUrl/tv/$seriesId/season/$seasonNumber?" +
-                     "api_key=$tmdbApiKey" +
+                     "api_key=${BuildConfig.TMDB_API_KEY}" +
                      "&language=pt-BR"
 
             app.get(url, timeout = 10_000).parsedSafe<TMDBSeasonResponse>()
