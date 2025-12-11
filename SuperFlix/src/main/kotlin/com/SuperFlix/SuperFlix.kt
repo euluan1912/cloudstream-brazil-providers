@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.app
 import org.jsoup.nodes.Element
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.text.SimpleDateFormat
-import org.json.JSONObject  // ⬅️ ESTE IMPORT FALTANDO!
+import org.json.JSONObject  
 
 class SuperFlix : MainAPI() {
     override var mainUrl = "https://superflix21.lol"
