@@ -1,243 +1,72 @@
-name: Build SuperFlix
+name: Build SuperFlix com Proxy
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.console=plain"
+    
     steps:
-      # 1. CHECKOUT
-      - name: Checkout código
+      - name: Checkout
         uses: actions/checkout@v4
-
-      # 2. SETUP
-      - name: Setup
+        
+      - name: Configurar com Proxy
         run: |
-          chmod +x gradlew
-          echo "=== VERIFICANDO ARQUIVOS ==="
-          ls -la SuperFlix/src/main/kotlin/com/SuperFlix/
-
-      # 3. DEBUG DO CÓDIGO
-      - name: Debug do código
+          # Remove qualquer Config.kt antigo
+          rm -f SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt 2>/dev/null || true
+          
+          echo "✅ Configuração: Usando proxy Cloudflare Worker"
+          echo "🔗 URL: https://lawliet.euluan1912.workers.dev"
+          
+      - name: Compilar SuperFlix
         run: |
-          echo "=== DEBUG DO CÓDIGO ==="
-          
-          # Verifica se tem as variáveis críticas
-          echo "🔍 Buscando 'tmdbApiKey' no SuperFlix.kt:"
-          grep -n "tmdbApiKey = " SuperFlix/src/main/kotlin/com/SuperFlix/SuperFlix.kt || echo "❌ NÃO ENCONTRADO!"
-          
-          echo ""
-          echo "🔍 Buscando 'Config.TMDB':"
-          grep -n "Config\." SuperFlix/src/main/kotlin/com/SuperFlix/SuperFlix.kt || echo "❌ NÃO ENCONTRADO!"
-          
-          # Mostra primeiras 25 linhas
-          echo ""
-          echo "📄 Primeiras 25 linhas do SuperFlix.kt:"
-          sed -n '1,25p' SuperFlix/src/main/kotlin/com/SuperFlix/SuperFlix.kt | cat -n
-
-      # 4. VERIFICAR/CRIAR TEMPLATE
-      - name: Preparar template
-        run: |
-          echo "=== PREPARANDO TEMPLATE ==="
-          
-          # Cria diretórios se não existirem
-          mkdir -p SuperFlix/src/main/kotlin/com/SuperFlix
-          
-          # Cria template (substitui se existir)
-          cat > SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt.template << 'EOF'
-          package com.SuperFlix
-
-          object Config {
-              const val TMDB_API_KEY = "@@TMDB_API_KEY@@"
-              const val TMDB_BASE_URL = "https://api.themoviedb.org/3"
-              const val TMDB_IMAGE_URL = "https://image.tmdb.org/t/p"
-              const val DEBUG_MODE = true
-              const val REQUEST_TIMEOUT = 10000L
-              
-              fun logConfig() {
-                  println("🎬 SuperFlix Config")
-                  println("📏 TMDB Key: ${TMDB_API_KEY.length} chars")
-              }
-          }
-          EOF
-          
-          echo "✅ Template criado/atualizado"
-
-      # 5. INJETAR CHAVE
-      - name: Inject TMDB API Key
-        run: |
-          echo "=== INJETANDO CHAVE ==="
-          
-          KEY="${{ secrets.TMDB_API_KEY }}"
-          
-          if [ -z "$KEY" ]; then
-            echo "❌ ERRO: TMDB_API_KEY não configurada!"
-            echo "Configure em: Settings → Secrets and variables → Actions"
-            exit 1
-          fi
-          
-          echo "🔑 Chave recebida: ${#KEY} chars"
-          
-          # Cria Config.kt com a chave real
-          cat > SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt << EOF
-          package com.SuperFlix
-
-          object Config {
-              const val TMDB_API_KEY = "$KEY"
-              const val TMDB_BASE_URL = "https://api.themoviedb.org/3"
-              const val TMDB_IMAGE_URL = "https://image.tmdb.org/t/p"
-              const val DEBUG_MODE = true
-              const val REQUEST_TIMEOUT = 10000L
-              
-              fun logConfig() {
-                  println("🎬 SuperFlix Config")
-                  println("📏 TMDB Key: \${TMDB_API_KEY.length} chars")
-              }
-          }
-          EOF
-          
-          echo "✅ Config.kt criado com chave"
-          echo "📝 Verificação (mascarada):"
-          grep "TMDB_API_KEY" SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt | sed 's/"[^"]*\("[^"]*"\)/"***\1/'
-
-      # 6. BUILD COM VERIFICAÇÃO DE ERROS
-      - name: Build com verificação
-        run: |
-          echo "=== BUILD COM VERIFICAÇÃO ==="
-          
           echo "🔄 Compilando..."
-          ./gradlew :SuperFlix:assembleDebug 2>&1 | tee build.log
           
-          BUILD_RESULT=$?
+          # Build com output mínimo
+          set +e
+          ./gradlew :SuperFlix:assembleDebug \
+            --no-build-cache \
+            --no-daemon \
+            --console=plain \
+            --quiet \
+            > build_output.log 2>&1
           
-          if [ $BUILD_RESULT -eq 0 ]; then
-            echo "✅ BUILD SUCESSO!"
+          BUILD_STATUS=$?
+          
+          # Mostra apenas erros
+          if [ $BUILD_STATUS -ne 0 ]; then
+            echo "❌ ERROS ENCONTRADOS:"
+            echo "======================"
+            grep -E "error:|FAILURE|exception|^e: |✗|❌" build_output.log | head -20
+            echo ""
+            echo "🔍 Últimas 10 linhas:"
+            tail -10 build_output.log
+            exit 1
+          else
+            echo "✅ Build bem-sucedido"
             
-            # Procura o .cs3 gerado
+            # Mostra arquivo gerado
             CS3_FILE=$(find . -name "*.cs3" -type f | head -1)
             if [ -f "$CS3_FILE" ]; then
-              echo "📦 Plugin gerado: $CS3_FILE"
-              echo "📏 Tamanho: $(ls -lh "$CS3_FILE" | awk '{print $5}')"
-            fi
-          else
-            echo "❌ BUILD FALHOU!"
-            echo ""
-            echo "=== ERROS ENCONTRADOS ==="
-            grep -i "error\|fail\|unresolved" build.log | head -20
-            echo ""
-            echo "=== LOG COMPLETO (últimas 50 linhas) ==="
-            tail -50 build.log
-            exit 1
-          fi
-
-      # 7. VERIFICAÇÃO PROFUNDA DO .CS3
-      - name: Verificação profunda
-        if: success()
-        run: |
-          echo "=== VERIFICAÇÃO PROFUNDA ==="
-          
-          CS3_FILE=$(find . -name "*.cs3" -type f | head -1)
-          
-          if [ -f "$CS3_FILE" ]; then
-            echo "🔍 Analisando: $CS3_FILE"
-            
-            # Verifica se é um ZIP válido
-            echo "📦 É arquivo ZIP? (deve ser sim)"
-            file "$CS3_FILE"
-            
-            # Tenta extrair strings
-            echo ""
-            echo "🔎 Buscando referências no .cs3:"
-            
-            # Procura por padrões
-            strings "$CS3_FILE" | grep -i "tmdb\|config\|superflix" | head -10
-            
-            # Conta ocorrências
-            TMDB_COUNT=$(strings "$CS3_FILE" | grep -i "tmdb" | wc -l)
-            CONFIG_COUNT=$(strings "$CS3_FILE" | grep -i "config" | wc -l)
-            
-            echo ""
-            echo "📊 Estatísticas:"
-            echo "   Referências TMDB: $TMDB_COUNT"
-            echo "   Referências Config: $CONFIG_COUNT"
-            
-            if [ $TMDB_COUNT -gt 0 ] && [ $CONFIG_COUNT -gt 0 ]; then
-              echo "✅ Plugin parece correto!"
-            else
-              echo "⚠️  Poucas referências encontradas"
-            fi
-          else
-            echo "❌ Nenhum .cs3 encontrado!"
-          fi
-
-      # 8. TESTE DE FUNCIONALIDADE (SIMULAÇÃO)
-      - name: Teste de funcionalidade
-        if: success()
-        run: |
-          echo "=== TESTE DE FUNCIONALIDADE ==="
-          
-          # Cria um teste simples
-          cat > test_config.kt << 'EOF'
-          package com.SuperFlix
-          
-          fun testConfig() {
-              println("=== TESTE CONFIG ===")
-              println("Chave: ${Config.TMDB_API_KEY.length} chars")
-              println("URL Base: ${Config.TMDB_BASE_URL}")
-              println("URL Imagem: ${Config.TMDB_IMAGE_URL}")
-          }
-          EOF
-          
-          echo "🧪 Teste criado"
-          echo "✅ Se o build passou, o plugin deve funcionar!"
-          echo ""
-          echo "🎯 PRÓXIMOS PASSOS:"
-          echo "1. Instale o plugin no CloudStream"
-          echo "2. Teste buscar um filme"
-          echo "3. Verifique logs no CloudStream (Config → Log)"
-          echo "4. Se mostrar 'TMDB Key: 32 chars', está funcionando!"
-
-      # 9. LIMPEZA SEGURA
-      - name: Limpeza
-        run: |
-          echo "=== LIMPEZA ==="
-          
-          # Remove arquivos sensíveis
-          rm -f SuperFlix/src/main/kotlin/com/SuperFlix/Config.kt
-          rm -f test_config.kt build.log
-          
-          echo "✅ Arquivos sensíveis removidos"
-          echo "📄 Template mantido para próximos builds"
-
-      # 10. RELATÓRIO FINAL
-      - name: Relatório final
-        if: always()
-        run: |
-          echo "=== RELATÓRIO FINAL ==="
-          
-          if [ -f "build.log" ]; then
-            if grep -q "BUILD SUCCESSFUL" build.log; then
-              echo "🎉 BUILD COMPLETO COM SUCESSO!"
               echo ""
-              echo "✅ O que funcionou:"
-              echo "   - Template criado/injetado"
-              echo "   - Config.kt gerado com chave"
-              echo "   - Plugin .cs3 compilado"
+              echo "🎉 PLUGIN GERADO:"
+              echo "   Nome: $(basename "$CS3_FILE")"
+              echo "   Tamanho: $(ls -lh "$CS3_FILE" | awk '{print $5}')"
+              echo "   Local: $CS3_FILE"
+              
+              # Verificação rápida
               echo ""
-              echo "📦 Próximos passos:"
-              echo "   1. Encontre o arquivo .cs3 em builds/"
-              echo "   2. Adicione ao CloudStream"
-              echo "   3. Teste com um filme"
-              echo "   4. Verifique logs no CloudStream"
-            else
-              echo "❌ BUILD FALHOU"
-              echo "Consulte os logs acima para detalhes"
+              echo "🔍 Verificação:"
+              if strings "$CS3_FILE" | grep -q "superflix\|SuperFlix" 2>/dev/null; then
+                echo "   ✓ Contém 'SuperFlix'"
+              fi
             fi
-          else
-            echo "⚠️  Log não encontrado"
           fi
+          
+          # Limpa log
+          rm -f build_output.log
