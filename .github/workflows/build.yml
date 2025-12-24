@@ -7,76 +7,84 @@ on:
   workflow_dispatch:
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write # CRÍTICO: Permissão de escrita para o deploy
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-        steps:
-            # 1. CHECKOUT
-            - uses: actions/checkout@v4
-              with:
-                  token: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-            # 2. SETUP JAVA/GRADLE
-            - name: Set up JDK 17
-              uses: actions/setup-java@v4
-              with:
-                  java-version: '17'
-                  distribution: 'temurin'
-                  cache: 'gradle'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
 
-            - name: Grant execute permission for gradlew
-              run: chmod +x gradlew
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-            - name: Build with Gradle (Cria os .cs3 e .jar)
-              run: ./gradlew assemble --refresh-dependencies --info
+      - name: Configurar BuildConfig com Secrets
+        run: |
+          if [[ -z "${{ secrets.TMDB_API_KEY }}" ]]; then
+            TMDB_API_KEY="dummy_api_key"
+          else
+            TMDB_API_KEY="${{ secrets.TMDB_API_KEY }}"
+          fi
+          
+          if [[ -z "${{ secrets.TMDB_ACCESS_TOKEN }}" ]]; then
+            TMDB_ACCESS_TOKEN="dummy_access_token"
+          else
+            TMDB_ACCESS_TOKEN="${{ secrets.TMDB_ACCESS_TOKEN }}"
+          fi
+          
+          echo "TMDB_API_KEY=$TMDB_API_KEY" > local.properties
+          echo "TMDB_ACCESS_TOKEN=$TMDB_ACCESS_TOKEN" >> local.properties
 
-            # 3. GERAÇÃO DO MANIFESTO DE PROVEDORES
-            - name: Generate plugins.json at correct path
-              run: ./gradlew makePluginsJson -PoutputFile="build/plugins.json"
+      - name: Build with Gradle
+        run: |
+          source local.properties
+          ./gradlew assemble --refresh-dependencies \
+            -PTMDB_API_KEY="${TMDB_API_KEY:-dummy_api_key}" \
+            -PTMDB_ACCESS_TOKEN="${TMDB_ACCESS_TOKEN:-dummy_access_token}"
 
-            # 4. CRIAÇÃO DA ESTRUTURA FINAL E CORREÇÃO DE URL (Regex de Captura Reversa)
-            - name: Mover, Corrigir URLs Internas e Criar repo.json principal
-              run: |
-                  # Define a base da URL funcional para o download no GitHub
-                  REPO_BASE_URL="https://github.com/${{ github.repository }}/raw/refs/heads/main/builds"
-                  PLUGINS_LIST="[\"$REPO_BASE_URL/plugins.json\"]"
+      - name: Generate plugins.json
+        run: |
+          source local.properties
+          ./gradlew makePluginsJson -PoutputFile="build/plugins.json" \
+            -PTMDB_API_KEY="${TMDB_API_KEY:-dummy_api_key}" \
+            -PTMDB_ACCESS_TOKEN="${TMDB_ACCESS_TOKEN:-dummy_access_token}"
 
-                  # 1. Cria a pasta 'builds'
-                  mkdir -p builds
+      - name: Mover e Corrigir URLs
+        run: |
+          REPO_BASE_URL="https://github.com/${{ github.repository }}/raw/refs/heads/main/builds"
+          PLUGINS_LIST="[\"$REPO_BASE_URL/plugins.json\"]"
 
-                  # 2. Move o manifesto de plugins para a pasta builds/
-                  mv build/plugins.json builds/plugins.json
+          mkdir -p builds
+          mv build/plugins.json builds/plugins.json
 
-                  # 3. ESCAPA a URL de base para uso no comando SED
-                  REPO_BASE_URL_ESCAPED=$(echo $REPO_BASE_URL | sed 's/\//\\\//g')
+          REPO_BASE_URL_ESCAPED=$(echo $REPO_BASE_URL | sed 's/\//\\\//g')
 
-                  # 4. CRÍTICO: Substitui a URL do .cs3 no plugins.json
-                  # Captura a parte do nome do arquivo, que é tudo que não é barra ou aspas.
-                  # Remove TUDO ANTES da última barra e substitui pela URL RAW.
-                  sed -i -E 's|"url": "[^"]*/([^/]+)\.cs3"|"url": "'"$REPO_BASE_URL_ESCAPED"'/\1.cs3"|g' builds/plugins.json
+          sed -i -E 's|"url": "[^"]*/([^/]+)\.cs3"|"url": "'"$REPO_BASE_URL_ESCAPED"'/\1.cs3"|g' builds/plugins.json
+          sed -i -E 's|"jarUrl": "[^"]*/([^/]+)\.jar"|"jarUrl": "'"$REPO_BASE_URL_ESCAPED"'/\1.jar"|g' builds/plugins.json
 
-                  # 5. CRÍTICO: Substitui a URL do .jar no plugins.json
-                  sed -i -E 's|"jarUrl": "[^"]*/([^/]+)\.jar"|"jarUrl": "'"$REPO_BASE_URL_ESCAPED"'/\1.jar"|g' builds/plugins.json
+          echo "{
+            \"name\": \"lietrepo\",
+            \"iconUrl\": \"https://github.com/lawlietbr.png\",
+            \"description\": \"Repositório Brasileiro para o Cloudstream\",
+            \"manifestVersion\": 1,
+            \"pluginLists\": $PLUGINS_LIST
+          }" > builds/repo.json
 
-                  # 6. CRIA o manifesto principal (repo.json)
-                  echo "{
-                    \"name\": \"lietrepo\",
-                    \"iconUrl\": \"https://github.com/lawlietbr.png\",
-                    \"description\": \"Repositório Brasileiro para o Cloudstream\",
-                    \"manifestVersion\": 1,
-                    \"pluginLists\": $PLUGINS_LIST
-                  }" > builds/repo.json
+          find . -type f -name "*.cs3" -exec cp {} builds/ \; || true
+          find . -type f -name "*.jar" -exec cp {} builds/ \; || true
 
-                  # 7. COPIA os arquivos .cs3 e .jar para a pasta builds/
-                  find . -type f -name "*.cs3" -exec cp {} builds/ \; || true
-                  find . -type f -name "*.jar" -exec cp {} builds/ \; || true
-
-            # 5. DEPLOY FINAL COM AÇÃO DE COMMIT DIRETO 
-            - name: Commit Providers to main branch
-              uses: stefanzweifel/git-auto-commit-action@v5
-              with:
-                  commit_message: "minor fixing"
-                  branch: main
-                  file_pattern: builds/*
+      - name: Commit Providers to main branch
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Build: Atualização de plugins"
+          branch: main
+          file_pattern: builds/*
