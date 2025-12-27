@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import java.text.SimpleDateFormat
 
 class SuperFlix : MainAPI() {
-    override var mainUrl = "https://superflix21.lol"
+    override var mainUrl = "https://superflix23.lol"
     override var name = "SuperFlix"
     override val hasMainPage = true
     override var lang = "pt-br"
