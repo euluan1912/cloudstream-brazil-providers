@@ -21,6 +21,27 @@
         "name": "AnimeFire"
     },
     {
+        "iconUrl": "https://goyabu.io/wp-content/uploads/2025/12/cropped-goyabu-favicon-192x192.png",
+        "jarFileSize": 129587,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
+        "fileSize": 34519,
+        "status": 1,
+        "language": "pt-br",
+        "authors": [
+            "lawlietbr"
+        ],
+        "tvTypes": [
+            "Animes"
+        ],
+        "version": 1,
+        "internalName": "Goyabu",
+        "jarUrl": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/Goyabu.jar",
+        "description": "Animes Online em HD gratuitamente no Goyabu",
+        "url": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/Goyabu.cs3",
+        "name": "Goyabu"
+    },
+    {
         "iconUrl": "https://icons.duckduckgo.com/ip2/superflix22.lol.ico",
         "jarFileSize": 248899,
         "apiVersion": 1,
