@@ -21,6 +21,27 @@
         "name": "AnimeFire"
     },
     {
+        "iconUrl": "https://www.anitube.news/wp-content/uploads/cropped-Favicon6-192x192.png",
+        "jarFileSize": 76582,
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
+        "fileSize": 20927,
+        "status": 1,
+        "language": "pt-br",
+        "authors": [
+            "lawlietbr"
+        ],
+        "tvTypes": [
+            "Animes"
+        ],
+        "version": 1,
+        "internalName": "AniTube",
+        "jarUrl": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/AniTube.jar",
+        "description": "AniTube \u00e9 um site para assistir seus animes favoritos online e de onde quiser, temos uma lista completa com diversos animes recentes e antigos para voc\u00ea explorar e o melhor disso tudo \u00e9 a qualidade do nosso site que o diferencia de outros.",
+        "url": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/AniTube.cs3",
+        "name": "AniTube"
+    },
+    {
         "iconUrl": "https://goyabu.io/wp-content/uploads/2025/12/cropped-goyabu-favicon-192x192.png",
         "jarFileSize": 129587,
         "apiVersion": 1,
