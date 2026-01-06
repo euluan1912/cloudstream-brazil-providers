@@ -40,8 +40,8 @@ The **LietRepo** is an experimental plugin development project for CloudStream 3
 # 📦 Instalação / Installation
 
 [![Passo 1](https://img.shields.io/badge/1_📱_Abrir_CloudStream_3-2196F3?style=flat-square&logo=android)]()
-[![Passo 2](https://img.shields.io/badge/2_⚙️_Configurações→Repositórios-4CAF50?style=flat-square&logo=settings)]()
-[![Passo 3](https://img.shields.io/badge/3_➕_Adicionar_Repositório-FF9800?style=flat-square&logo=plus)]()
+[![Passo 2](https://img.shields.io/badge/2_⚙️_Configurações→Extensões-4CAF50?style=flat-square&logo=settings)]()
+[![Passo 3](https://img.shields.io/badge/3_➕_Adicionar_Extensão-FF9800?style=flat-square&logo=plus)]()
 [![Passo 4](https://img.shields.io/badge/4_📋_Colar_URL-9C27B0?style=flat-square&logo=clipboard)]()
 
 **URL para colar:**
