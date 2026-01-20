@@ -43,10 +43,10 @@
     },
     {
         "iconUrl": "https://cineagora.net/templates/cineagora/images/touch-icon-180x180.png",
-        "jarFileSize": 248873,
+        "jarFileSize": 269563,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 60273,
+        "fileSize": 65558,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -69,7 +69,7 @@
         "jarFileSize": 227711,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 52081,
+        "fileSize": 52080,
         "status": 1,
         "language": "pt-br",
         "authors": [
