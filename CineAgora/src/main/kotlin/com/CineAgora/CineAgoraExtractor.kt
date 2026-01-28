@@ -6,11 +6,11 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import org.jsoup.nodes.Element
 
 object CineAgoraExtractor {
-    private const val BASE_PLAYER = "https://watch.brplayer.cc"
+    private const val BASE_PLAYER = "https://watch.brstream.cc"
     private const val REFERER_CINEAGORA = "https://cineagora.net/"
+    private const val PRIMARY_SOURCE = "CineAgora"
 
     suspend fun extractVideoLinks(
         url: String,
@@ -18,7 +18,10 @@ object CineAgoraExtractor {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return when {
-            url.contains("watch.brplayer.cc") -> {
+            url.contains("watch.brstream.cc/watch?v=") -> {
+                extractHlsFromWatchPage(url, name, callback)
+            }
+            url.contains("watch.brstream.cc/watch/") && !url.contains("?v=") -> {
                 extractHlsFromWatchPage(url, name, callback)
             }
             url.contains("cineagora.net") -> {
@@ -38,38 +41,143 @@ object CineAgoraExtractor {
         try {
             val html = app.get(cineAgoraUrl, referer = REFERER_CINEAGORA).text
 
-            val iframePatterns = listOf(
-                """<iframe[^>]*src=["'](https://watch\.brplayer\.cc/watch\?v=[^"']+)["']""",
-                """<iframe[^>]*src=["'](https://watch\.brplayer\.cc/watch/[^"']+)["']""",
-                """src=["'](https://watch\.brplayer\.cc/watch[^"']+)["'][^>]*allowfullscreen""",
-                """<iframe[^>]*allowfullscreen[^>]*src=["'](https://watch\.brplayer\.cc/[^"']+)["']""",
-                """data-src=["'][^"']*["'][^>]*src=["'](https://watch\.brplayer\.cc/[^"']+)["']"""
+            val moviePatterns = listOf(
+                """https://watch\.brstream\.cc/watch\?v=([A-Z0-9]+)""",
+                """<iframe[^>]*src=["'](https://watch\.brstream\.cc/watch\?v=[^"']+)["']""",
+                """data-link=["'](https://watch\.brstream\.cc/watch\?v=[^"']+)["']""",
+                """["'](/watch\?v=([A-Z0-9]+))["']"""
             )
 
-            for (pattern in iframePatterns) {
-                val match = Regex(pattern).find(html)
-                if (match != null) {
-                    var playerUrl = match.groupValues[1]
-                    if (!playerUrl.startsWith("http")) {
-                        playerUrl = BASE_PLAYER + (if (playerUrl.startsWith("/")) "" else "/") + playerUrl
+            val seriesPatterns = listOf(
+                """https://watch\.brstream\.cc/watch/([A-Z0-9]+)""",
+                """<iframe[^>]*src=["'](https://watch\.brstream\.cc/watch/[^"']+)["']""",
+                """data-link=["'](https://watch\.brstream\.cc/watch/[^"']+)["']""",
+                """["'](/watch/([A-Z0-9]+))["']"""
+            )
+
+            val tvPatterns = listOf(
+                """https://watch\.brstream\.cc/tv/([^"'\s?&]+)""",
+                """<iframe[^>]*src=["'](https://watch\.brstream\.cc/tv/[^"']+)["']""",
+                """data-link=["'](https://watch\.brstream\.cc/tv/[^"']+)["']"""
+            )
+
+            for (pattern in moviePatterns) {
+                val regex = Regex(pattern)
+                val matches = regex.findAll(html).toList()
+                for (match in matches) {
+                    var watchUrl = match.groupValues.getOrNull(1) ?: match.value
+                    if (watchUrl.startsWith("/")) {
+                        watchUrl = BASE_PLAYER + watchUrl
                     }
-                    return extractHlsFromWatchPage(playerUrl, name, callback)
+                    if (extractHlsFromWatchPage(watchUrl, name, callback)) {
+                        return true
+                    }
                 }
             }
 
-            val fallbackPattern = """https://watch\.brplayer\.cc/[^"'\s<>]+"""
+            for (pattern in seriesPatterns) {
+                val regex = Regex(pattern)
+                val matches = regex.findAll(html).toList()
+                for (match in matches) {
+                    var watchUrl = match.groupValues.getOrNull(1) ?: match.value
+                    if (watchUrl.startsWith("/")) {
+                        watchUrl = BASE_PLAYER + watchUrl
+                    }
+                    if (!watchUrl.contains("?")) {
+                        watchUrl += "?ref=&d=null"
+                    }
+                    if (extractHlsFromWatchPage(watchUrl, name, callback)) {
+                        return true
+                    }
+                }
+            }
+
+            for (pattern in tvPatterns) {
+                val regex = Regex(pattern)
+                val matches = regex.findAll(html).toList()
+                for (match in matches) {
+                    var seriesUrl = match.groupValues.getOrNull(1) ?: match.value
+                    if (seriesUrl.startsWith("/")) {
+                        seriesUrl = BASE_PLAYER + seriesUrl
+                    }
+                    val videoSlug = extractVideoSlugFromSeriesPage(seriesUrl)
+                    if (videoSlug != null) {
+                        val watchUrl = "$BASE_PLAYER/watch/$videoSlug?ref=&d=null"
+                        if (extractHlsFromWatchPage(watchUrl, name, callback)) {
+                            return true
+                        }
+                    }
+                }
+            }
+
+            val fallbackPattern = """https://watch\.brstream\.cc/(watch\?v=|watch/|tv/)([^"'\s<>?&]+)"""
             val allMatches = Regex(fallbackPattern).findAll(html).toList()
 
-            for (match in allMatches) {
+            allMatches.forEach { match ->
+                val pathType = match.groupValues[1]
+                val slug = match.groupValues[2]
                 val playerUrl = match.value
-                if (playerUrl.contains("/watch")) {
-                    return extractHlsFromWatchPage(playerUrl, name, callback)
+
+                when {
+                    pathType.contains("watch?v=") -> {
+                        if (extractHlsFromWatchPage(playerUrl, name, callback)) {
+                            return true
+                        }
+                    }
+                    pathType.contains("watch/") && !pathType.contains("?v=") -> {
+                        val watchUrl = if (!playerUrl.contains("?")) {
+                            "$playerUrl?ref=&d=null"
+                        } else {
+                            playerUrl
+                        }
+                        if (extractHlsFromWatchPage(watchUrl, name, callback)) {
+                            return true
+                        }
+                    }
+                    pathType.contains("tv/") -> {
+                        val videoSlug = extractVideoSlugFromSeriesPage(playerUrl)
+                        if (videoSlug != null) {
+                            val watchUrl = "$BASE_PLAYER/watch/$videoSlug?ref=&d=null"
+                            if (extractHlsFromWatchPage(watchUrl, name, callback)) {
+                                return true
+                            }
+                        }
+                    }
                 }
             }
 
             return false
         } catch (e: Exception) {
             return false
+        }
+    }
+
+    private suspend fun extractVideoSlugFromSeriesPage(seriesUrl: String): String? {
+        try {
+            val html = app.get(seriesUrl, referer = REFERER_CINEAGORA).text
+
+            val patterns = listOf(
+                """video_slug["']\s*:\s*["']([^"']+)["']""",
+                """["']slug["']\s*:\s*["']([^"']+)["']""",
+                """/watch/([^"'\s<>/]+)""",
+                """data-link=["']([^"']+)["'].*?video_slug""",
+                """var\s+video_slug\s*=\s*["']([^"']+)["']""",
+                """video_slug\s*=\s*["']([^"']+)["']"""
+            )
+
+            for (pattern in patterns) {
+                val match = Regex(pattern).find(html)
+                if (match != null) {
+                    val slug = match.groupValues[1]
+                    if (slug.isNotBlank() && slug.matches(Regex("^[A-Z0-9]+$"))) {
+                        return slug
+                    }
+                }
+            }
+
+            return null
+        } catch (e: Exception) {
+            return null
         }
     }
 
@@ -79,103 +187,78 @@ object CineAgoraExtractor {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            val html = app.get(watchUrl, referer = REFERER_CINEAGORA).text
+            val headers = mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "Accept-Language" to "pt-BR",
+                "Cache-Control" to "no-cache",
+                "Pragma" to "no-cache",
+                "Referer" to if (watchUrl.contains("/tv/")) watchUrl else "https://watch.brstream.cc/tv/severance",
+                "Sec-Fetch-Dest" to "iframe",
+                "Sec-Fetch-Mode" to "navigate",
+                "Sec-Fetch-Site" to "same-origin",
+                "Upgrade-Insecure-Requests" to "1",
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36"
+            )
 
-            val uid = extractFromRegex(html, "\"uid\"\\s*:\\s*\"(\\d+)\"")
-            val md5 = extractFromRegex(html, "\"md5\"\\s*:\\s*\"([a-f0-9]{32})\"")
-            val videoId = extractFromRegex(html, "\"id\"\\s*:\\s*\"(\\d+)\"")
-            val status = extractFromRegex(html, "\"status\"\\s*:\\s*\"([01])\"") ?: "1"
+            val html = app.get(watchUrl, headers = headers).text
 
-            if (uid != null && md5 != null && videoId != null) {
-                val masterUrl = "$BASE_PLAYER/m3u8/$uid/$md5/master.txt?s=1&id=$videoId&cache=$status"
-                val altUrl = "$BASE_PLAYER/alternative_stream/$uid/$md5/master.m3u8"
+            val videoParams = extractVideoParams(html)
+            if (videoParams != null) {
+                val masterUrl = "\( BASE_PLAYER/m3u8/ \){videoParams.uid}/\( {videoParams.md5}/master.txt?s=1&id= \){videoParams.id}&cache=${videoParams.status}"
 
-                val headers = mapOf(
+                val hlsHeaders = mapOf(
                     "Referer" to watchUrl,
                     "Origin" to BASE_PLAYER,
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36"
                 )
 
-                val links = try {
-                    M3u8Helper.generateM3u8(
-                        source = "CineAgora",
+                try {
+                    val allLinks = M3u8Helper.generateM3u8(
+                        source = PRIMARY_SOURCE,
                         streamUrl = masterUrl,
                         referer = watchUrl,
-                        headers = headers
+                        headers = hlsHeaders
                     )
-                } catch (e: Exception) {
-                    emptyList()
-                }
 
-                if (links.isNotEmpty()) {
-                    links.forEach { callback(it) }
+                    allLinks.forEach { link ->
+                        callback(link)
+                    }
+
+                    return true
+                } catch (e: Exception) {
+                    val fallbackLink = newExtractorLink(
+                        source = PRIMARY_SOURCE,
+                        name = name,
+                        url = masterUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = watchUrl
+                        this.quality = Qualities.Unknown.value
+                        this.headers = hlsHeaders
+                    }
+                    callback(fallbackLink)
                     return true
                 }
-
-                val fallbackLink = newExtractorLink(
-                    source = "CineAgora",
-                    name = name,
-                    url = masterUrl,
-                    type = ExtractorLinkType.M3U8
-                ) {
-                    this.referer = watchUrl
-                    this.quality = Qualities.Unknown.value
-                    this.headers = headers
-                }
-                callback(fallbackLink)
-
-                val altLink = newExtractorLink(
-                    source = "CineAgora (Alt)",
-                    name = "$name (Alternativo)",
-                    url = altUrl,
-                    type = ExtractorLinkType.M3U8
-                ) {
-                    this.referer = watchUrl
-                    this.quality = Qualities.Unknown.value
-                    this.headers = headers
-                }
-                callback(altLink)
-
-                return true
             }
 
-            val masterUrlDirect = extractMasterUrlDirect(html)
-            if (masterUrlDirect != null) {
-                val headers = mapOf(
+            val m3u8Url = extractM3u8UrlDirect(html)
+            if (m3u8Url != null) {
+                val hlsHeaders = mapOf(
                     "Referer" to watchUrl,
                     "Origin" to BASE_PLAYER
                 )
 
                 val directLink = newExtractorLink(
-                    source = "CineAgora",
+                    source = PRIMARY_SOURCE,
                     name = name,
-                    url = masterUrlDirect,
+                    url = m3u8Url,
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = watchUrl
                     this.quality = Qualities.Unknown.value
-                    this.headers = headers
+                    this.headers = hlsHeaders
                 }
-
                 callback(directLink)
-                return true
-            }
-
-            val m3u8Urls = extractAllM3u8Urls(html)
-            if (m3u8Urls.isNotEmpty()) {
-                m3u8Urls.forEach { m3u8Url ->
-                    val m3u8Link = newExtractorLink(
-                        source = "CineAgora",
-                        name = name,
-                        url = m3u8Url,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = watchUrl
-                        this.quality = Qualities.Unknown.value
-                        this.headers = mapOf("Referer" to watchUrl)
-                    }
-                    callback(m3u8Link)
-                }
                 return true
             }
 
@@ -185,19 +268,66 @@ object CineAgoraExtractor {
         }
     }
 
+    private fun extractVideoParams(html: String): VideoParams? {
+        val videoPattern = """var\s+video\s*=\s*\{[^}]+\}"""
+        val videoMatch = Regex(videoPattern, RegexOption.DOT_MATCHES_ALL).find(html)
+
+        if (videoMatch != null) {
+            val videoJson = videoMatch.value
+            val uid = extractFromRegex(videoJson, """"uid"\s*:\s*"([^"]+)"""")
+            val md5 = extractFromRegex(videoJson, """"md5"\s*:\s*"([^"]+)"""")
+            val id = extractFromRegex(videoJson, """"id"\s*:\s*"([^"]+)"""")
+            val status = extractFromRegex(videoJson, """"status"\s*:\s*"([^"]+)"""") ?: "1"
+
+            if (uid != null && md5 != null && id != null) {
+                return VideoParams(uid, md5, id, status)
+            }
+        }
+
+        val uid = extractFromRegex(html, """"uid"\s*:\s*"([^"]+)"""")
+        val md5 = extractFromRegex(html, """"md5"\s*:\s*"([^"]+)"""")
+        val id = extractFromRegex(html, """"id"\s*:\s*"([^"]+)"""")
+        val status = extractFromRegex(html, """"status"\s*:\s*"([^"]+)"""") ?: "1"
+
+        if (uid != null && md5 != null && id != null) {
+            return VideoParams(uid, md5, id, status)
+        }
+
+        val configPattern = """jwplayer\('[^']+'\)\.setup\(([\s\S]*?)\);"""
+        val configMatch = Regex(configPattern).find(html)
+
+        if (configMatch != null) {
+            val configText = configMatch.groupValues[1]
+            val videoInConfig = extractFromRegex(configText, """video"\s*:\s*\{([^}]+)\}""")
+            if (videoInConfig != null) {
+                val uid2 = extractFromRegex(videoInConfig, """"uid"\s*:\s*"([^"]+)"""")
+                val md5_2 = extractFromRegex(videoInConfig, """"md5"\s*:\s*"([^"]+)"""")
+                val id2 = extractFromRegex(videoInConfig, """"id"\s*:\s*"([^"]+)"""")
+                val status2 = extractFromRegex(videoInConfig, """"status"\s*:\s*"([^"]+)"""") ?: "1"
+
+                if (uid2 != null && md5_2 != null && id2 != null) {
+                    return VideoParams(uid2, md5_2, id2, status2)
+                }
+            }
+        }
+
+        return null
+    }
+
     private fun extractFromRegex(text: String, pattern: String): String? {
         val regex = Regex(pattern)
         val match = regex.find(text)
-        return match?.groupValues?.get(1)
+        return match?.groupValues?.getOrNull(1)
     }
 
-    private fun extractMasterUrlDirect(html: String): String? {
+    private fun extractM3u8UrlDirect(html: String): String? {
         val patterns = listOf(
-            """file\s*:\s*['"](/m3u8/\d+/[a-f0-9]+/master\.txt[^'"]*)['"]""",
-            """["']sources["']\s*:\s*\[.*?file["']\s*:\s*["']([^"']+master\.txt[^"']*)["']""",
-            """master\.txt[?&]s=1&id=\d+""",
-            """["']file["']\s*:\s*["']([^"']+\.txt)["']""",
-            """src\s*:\s*['"]([^'"]+\.m3u8[^'"]*)['"]"""
+            """file\s*:\s*["']/m3u8/([^/]+)/([^/]+)/master\.txt\?s=1&id=([^&]+)&cache=([^"']+)["']""",
+            """"file"\s*:\s*["']([^"']+/m3u8/[^"']+\.txt[^"']*)["']""",
+            """sources\s*:\s*\[\{.*?"file"\s*:\s*["']([^"']+\.txt[^"']*)["']""",
+            """master\.txt\?s=1&id=\d+&cache=\d+""",
+            """["'](https?://[^"']+\.m3u8[^"']*)["']""",
+            """["'](/m3u8/[^"']+\.txt[^"']*)["']"""
         )
 
         for (pattern in patterns) {
@@ -205,13 +335,9 @@ object CineAgoraExtractor {
             val match = regex.find(html)
             if (match != null) {
                 var url = match.groupValues.getOrNull(1) ?: match.value
-
-                if (url.startsWith("/")) {
+                if (url.startsWith("/m3u8/") && !url.startsWith("//")) {
                     url = BASE_PLAYER + url
-                } else if (!url.startsWith("http")) {
-                    url = "$BASE_PLAYER/$url"
                 }
-
                 return url
             }
         }
@@ -219,36 +345,10 @@ object CineAgoraExtractor {
         return null
     }
 
-    private fun extractAllM3u8Urls(html: String): List<String> {
-        val urls = mutableListOf<String>()
-
-        val patterns = listOf(
-            """["'](https?://[^"']+\.m3u8[^"']*)["']""",
-            """["'](/[^"']+\.m3u8[^"']*)["']""",
-            """(https?://[^\s<>"']+\.m3u8)""",
-            """(/\S+\.m3u8\S*)"""
-        )
-
-        for (pattern in patterns) {
-            val regex = Regex(pattern)
-            val matches = regex.findAll(html)
-
-            matches.forEach { match ->
-                var url = match.value
-                if (url.startsWith("\"") || url.startsWith("'")) {
-                    url = url.substring(1, url.length - 1)
-                }
-
-                if (url.startsWith("/") && !url.startsWith("//")) {
-                    url = BASE_PLAYER + url
-                }
-
-                if (url.startsWith("http") && !urls.contains(url)) {
-                    urls.add(url)
-                }
-            }
-        }
-
-        return urls
-    }
+    data class VideoParams(
+        val uid: String,
+        val md5: String,
+        val id: String,
+        val status: String
+    )
 }
