@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.SubtitleFile
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
@@ -114,7 +115,7 @@ class Doramogo : MainAPI() {
                     val episodeText = episodeTextElement?.text()?.trim() ?: "Episódio 01"
 
                     val episodeNumber = extractEpisodeNumberFromText(episodeText)
-                        ?: extractEpisodeNumberFromUrl(href)
+                        ?: extractEpisodeNumberFromUrlString(href)
                         ?: 1
 
                     val imgElement = card.selectFirst("img")
@@ -304,7 +305,7 @@ class Doramogo : MainAPI() {
             else -> TvType.TvSeries
         }
 
-        val year = extractYearFromUrl(href)
+        val year = extractYearFromUrlString(href)
 
         if (type == TvType.Movie) {
             return newMovieSearchResponse(title, fixUrl(href), type) { 
@@ -398,7 +399,7 @@ class Doramogo : MainAPI() {
 
         val year = tmdbInfo?.year
             ?: infoMap["ano"]?.toIntOrNull()
-            ?: extractYearFromUrl(url)
+            ?: extractYearFromUrlString(url)
             ?: title.findYear()
 
         val tmdbGenres = tmdbInfo?.genres?.map { it.name }
@@ -442,7 +443,7 @@ class Doramogo : MainAPI() {
                     val episodeTitle = episodeItem.selectFirst(".episode-title")?.text()?.trim() ?: "Episódio"
 
                     val episodeNumber = extractEpisodeNumberFromEpisodeItem(episodeItem)
-                    val seasonNumber = extractSeasonNumberFromUrl(episodeUrl) ?: 1
+                    val seasonNumber = extractSeasonNumberFromUrlString(episodeUrl) ?: 1
 
                     episodes.add(newEpisode(episodeUrl) {
                         this.name = episodeTitle
@@ -454,10 +455,10 @@ class Doramogo : MainAPI() {
 
             if (episodes.isEmpty()) {
                 val episodeNum = episodeNumberFromTitle 
-                    ?: extractEpisodeNumberFromUrl(url) 
+                    ?: extractEpisodeNumberFromUrlString(url) 
                     ?: 1
 
-                val seasonNum = extractSeasonNumberFromUrl(url) ?: 1
+                val seasonNum = extractSeasonNumberFromUrlString(url) ?: 1
 
                 episodes.add(newEpisode(url) {
                     this.name = "Episódio $episodeNum"
@@ -514,19 +515,23 @@ class Doramogo : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         var linksFound = false
-        
+
         val document = app.get(data).document
-        
+
+        val proxyUrls = extractProxyUrlsFromPage(document)
+        val primaryProxy = proxyUrls.primaryUrl
+        val fallbackProxy = proxyUrls.fallbackUrl
+
         val urlParts = data.split("/")
         val slug = urlParts.getOrNull(urlParts.indexOf("series") + 1) 
             ?: urlParts.getOrNull(urlParts.indexOf("filmes") + 1)
             ?: return false
-        
-        val temporada = extractSeasonNumberFromUrl(data) ?: 1
-        val episodio = extractEpisodeNumberFromUrl(data) ?: 1
-        
+
+        val temporada = extractSeasonNum(data) ?: 1
+        val episodio = extractEpisodeNum(data) ?: 1
+
         val isFilme = data.contains("/filmes/")
-        
+
         val streamPath = if (isFilme) {
             val pt = slug.first().uppercase()
             "$pt/$slug/stream/stream.m3u8?nocache=${System.currentTimeMillis()}"
@@ -536,13 +541,10 @@ class Doramogo : MainAPI() {
             val epNum = episodio.toString().padStart(2, '0')
             "$pt/$slug/$tempNum-temporada/$epNum/stream.m3u8?nocache=${System.currentTimeMillis()}"
         }
-        
-        val PRIMARY_URL = "https://proxy-us-east1-outbound-series.xreadycf.site"
-        val FALLBACK_URL = "https://proxy-us-east1-forks-doramas.xreadycf.site"
-        
-        val primaryStreamUrl = "$PRIMARY_URL/$streamPath"
-        val fallbackStreamUrl = "$FALLBACK_URL/$streamPath"
-        
+
+        val primaryStreamUrl = "$primaryProxy/$streamPath"
+        val fallbackStreamUrl = "$fallbackProxy/$streamPath"
+
         val headers = mapOf(
             "accept" to "*/*",
             "accept-language" to "pt-BR",
@@ -557,7 +559,7 @@ class Doramogo : MainAPI() {
             "sec-fetch-site" to "cross-site",
             "user-agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36"
         )
-        
+
         suspend fun tryAddLink(url: String, name: String): Boolean {
             return try {
                 val testResponse = app.get(
@@ -566,7 +568,7 @@ class Doramogo : MainAPI() {
                     allowRedirects = true,
                     timeout = 15
                 )
-                
+
                 if (testResponse.code in 200..299) {
                     callback(newExtractorLink(name, "Doramogo", url, ExtractorLinkType.M3U8) {
                         referer = mainUrl
@@ -581,56 +583,33 @@ class Doramogo : MainAPI() {
                 false
             }
         }
-        
-        if (tryAddLink(primaryStreamUrl, "Doramogo")) {
+
+        if (tryAddLink(primaryStreamUrl, "Doramogo (Primary)")) {
             linksFound = true
         }
-        
+
         if (!linksFound) {
-            if (tryAddLink(fallbackStreamUrl, "Doramogo")) {
+            if (tryAddLink(fallbackStreamUrl, "Doramogo (Fallback)")) {
                 linksFound = true
             }
         }
-        
+
         if (!linksFound) {
-            callback(newExtractorLink(name, "Doramogo", primaryStreamUrl, ExtractorLinkType.M3U8) {
-                referer = mainUrl
-                quality = Qualities.P720.value
-                this.headers = headers
-            })
-            
-            callback(newExtractorLink(name, "Doramogo", fallbackStreamUrl, ExtractorLinkType.M3U8) {
-                referer = mainUrl
-                quality = Qualities.P720.value
-                this.headers = headers
-            })
-            
-            linksFound = true
-        }
-        
-        if (!linksFound) {
-            val scriptContent = document.select("script").find { 
-                it.html().contains("construirStreamPath") 
-            }?.html()
-            
-            if (!scriptContent.isNullOrBlank()) {
-                val urls = extractUrlsFromJavaScript(scriptContent)
-                urls.forEachIndexed { index, url ->
-                    if (url.contains(".m3u8") && !url.contains("jwplatform.com")) {
-                        callback(newExtractorLink(name, "Doramogo", url, ExtractorLinkType.M3U8) {
-                            referer = mainUrl
-                            quality = Qualities.P720.value
-                            this.headers = headers
-                        })
-                        linksFound = true
-                    }
+            extractM3u8UrlsFromJS(document).forEach { url ->
+                if (url.contains(".m3u8")) {
+                    callback(newExtractorLink(name, "Doramogo (JS)", url, ExtractorLinkType.M3U8) {
+                        referer = mainUrl
+                        quality = Qualities.P720.value
+                        this.headers = headers
+                    })
+                    linksFound = true
                 }
             }
         }
-        
+
         return linksFound
     }
-    
+
     private fun cleanTitle(title: String): String {
         return title.replace(Regex("\\s*\\(Legendado\\)", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\s*\\(Dublado\\)", RegexOption.IGNORE_CASE), "")
@@ -660,13 +639,13 @@ class Doramogo : MainAPI() {
         return null
     }
 
-    private fun extractYearFromUrl(url: String): Int? {
+    private fun extractYearFromUrlString(url: String): Int? {
         val pattern = Regex("""/(?:series|filmes)/[^/]+-(\d{4})/""")
         val match = pattern.find(url)
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    private fun extractEpisodeNumberFromUrl(url: String): Int? {
+    private fun extractEpisodeNumberFromUrlString(url: String): Int? {
         val patterns = listOf(
             Regex("""episodio-(\d+)""", RegexOption.IGNORE_CASE),
             Regex("""ep-(\d+)""", RegexOption.IGNORE_CASE),
@@ -683,135 +662,146 @@ class Doramogo : MainAPI() {
         return null
     }
 
-    private fun extractUrlsFromJavaScript(script: String): List<String> {
+    private fun extractSeasonNumberFromUrlString(url: String): Int? {
+        val pattern = Regex("""temporada[_-](\d+)""", RegexOption.IGNORE_CASE)
+        val match = pattern.find(url)
+        return match?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun extractSeasonNum(url: String): Int? {
+        val pattern = Regex("""/temporada-(\d+)""")
+        return pattern.find(url)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun extractEpisodeNum(url: String): Int? {
+        val pattern = Regex("""/episodio-(\d+)""")
+        return pattern.find(url)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun extractProxyUrlsFromPage(document: Document): DoramogoProxyUrls {
+        var primaryUrl = ""
+        var fallbackUrl = ""
+
+        val scriptTags = document.select("script")
+
+        for (script in scriptTags) {
+            val scriptContent = script.html()
+
+            if (scriptContent.contains("const PRIMARY_URL") || scriptContent.contains("const FALLBACK_URL")) {
+                val primaryPattern = Regex("""const\s+PRIMARY_URL\s*=\s*["']([^"']+)["']""")
+                val primaryMatch = primaryPattern.find(scriptContent)
+                if (primaryMatch != null) {
+                    primaryUrl = primaryMatch.groupValues[1]
+                }
+
+                val fallbackPattern = Regex("""const\s+FALLBACK_URL\s*=\s*["']([^"']+)["']""")
+                val fallbackMatch = fallbackPattern.find(scriptContent)
+                if (fallbackMatch != null) {
+                    fallbackUrl = fallbackMatch.groupValues[1]
+                }
+
+                if (primaryUrl.isNotBlank() && fallbackUrl.isNotBlank()) {
+                    break
+                }
+            }
+
+            if (scriptContent.contains("urlConfig")) {
+                val urlConfigPattern = Regex("""urlConfig\s*=\s*\{[^}]+\}""")
+                val urlConfigMatch = urlConfigPattern.find(scriptContent)
+
+                if (urlConfigMatch != null) {
+                    val configContent = urlConfigMatch.value
+                    val basePattern = Regex(""""base"\s*:\s*"([^"]+)"""")
+                    val baseMatch = basePattern.find(configContent)
+
+                    if (baseMatch != null) {
+                        fallbackUrl = baseMatch.groupValues[1]
+                    }
+                }
+            }
+        }
+
+        if (primaryUrl.isBlank()) {
+            primaryUrl = "https://proxy-us-east1-outbound-series.doaswin.shop"
+        }
+
+        if (fallbackUrl.isBlank()) {
+            fallbackUrl = "https://proxy-us-east1-forks-doramas.doaswin.shop"
+        }
+
+        primaryUrl = primaryUrl.removeSuffix("/")
+        fallbackUrl = fallbackUrl.removeSuffix("/")
+
+        return DoramogoProxyUrls(primaryUrl, fallbackUrl)
+    }
+
+    private fun extractM3u8UrlsFromJS(document: Document): List<String> {
         val urls = mutableListOf<String>()
 
-        val patterns = listOf(
-            Regex("""(https?://[^"' >]+\.m3u8[^"' >]*)"""),
-            Regex("""PRIMARY_URL\s*=\s*['"]([^'"]+)['"]"""),
-            Regex("""FALLBACK_URL\s*=\s*['"]([^'"]+)['"]"""),
-            Regex("""url\s*=\s*['"]([^'"]+)['"]"""),
-            Regex("""file\s*:\s*['"]([^'"]+\.m3u8[^'"]*)['"]""")
-        )
+        val scripts = document.select("script")
 
-        patterns.forEach { pattern ->
-            val matches = pattern.findAll(script)
-            matches.forEach { match ->
-                val url = match.groupValues[1]
-                if (url.isNotBlank() && (url.contains("http") || url.contains("//"))) {
-                    val fullUrl = if (url.startsWith("//")) "https:$url" else url
-                    urls.add(fullUrl)
+        for (script in scripts) {
+            val scriptContent = script.html()
+
+            val patterns = listOf(
+                Regex("""['"](https?://[^'"]+\.m3u8[^'"]*)['"]"""),
+                Regex("""['"](https?://proxy-[^'"]+\.m3u8[^'"]*)['"]"""),
+                Regex("""['"](\w+StreamUrl\s*[=:]\s*[^;]+)['"]""")
+            )
+
+            for (pattern in patterns) {
+                val matches = pattern.findAll(scriptContent)
+                matches.forEach { match ->
+                    val potentialUrl = match.groupValues[1]
+
+                    if (potentialUrl.contains(".m3u8") && 
+                        (potentialUrl.startsWith("http://") || potentialUrl.startsWith("https://"))) {
+                        if (!urls.contains(potentialUrl)) {
+                            urls.add(potentialUrl)
+                        }
+                    }
                 }
             }
         }
 
-        return urls.distinct()
+        return urls
     }
 
-    private fun extractInfoMap(document: Element): Map<String, String> {
-        val infoMap = mutableMapOf<String, String>()
-
-        document.selectFirst(".detail p.text-white")?.text()?.trim()?.let { detailText ->
-            val yearMatch = Regex("""\s*/\s*(\d{4})\s*/\s*""").find(detailText)
-            yearMatch?.groupValues?.get(1)?.let { year ->
-                infoMap["ano"] = year
-            }
-
-            val epMatch = Regex("""(\d+)\s*Episodes?""").find(detailText)
-            epMatch?.groupValues?.get(1)?.let { eps ->
-                infoMap["episódios"] = eps
+    private fun extractEpisodeNumberFromEpisodeItem(episodeItem: Element): Int {
+        val episodeNumberSpan = episodeItem.selectFirst(".dorama-one-episode-number")
+        episodeNumberSpan?.text()?.let { spanText ->
+            val match = Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE).find(spanText)
+            if (match != null) {
+                return match.groupValues[1].toIntOrNull() ?: 1
             }
         }
 
-        document.select(".casts div").forEach { div ->
-            val text = div.text()
-            if (text.contains(":")) {
-                val parts = text.split(":", limit = 2)
-                if (parts.size == 2) {
-                    val key = parts[0].trim().lowercase().removePrefix("b").removeSuffix(":")
-                    val value = parts[1].trim()
-
-                    val normalizedKey = when (key) {
-                        "status" -> "status"
-                        "estúdio", "estudio", "studio" -> "estúdio"
-                        "áudio", "audio" -> "áudio"
-                        "duração", "duracao", "duration" -> "duração"
-                        else -> key
-                    }
-
-                    infoMap[normalizedKey] = value
-                }
-            }
-        }
-
-        return infoMap
+        val episodeTitle = episodeItem.selectFirst(".episode-title")?.text() ?: ""
+        val pattern = Regex("""Episódio\s*(\d+)|Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
+        val match = pattern.find(episodeTitle)
+        return match?.groupValues?.get(1)?.toIntOrNull()
+            ?: match?.groupValues?.get(2)?.toIntOrNull()
+            ?: 1
     }
 
-    private fun extractRecommendationsFromSite(document: Element): List<SearchResponse> {
-        val recommendations = mutableListOf<SearchResponse>()
+    private fun extractSeasonNumber(seasonTitle: String): Int {
+        val pattern = Regex("""(\d+)°\s*Temporada|Temporada\s*(\d+)""", RegexOption.IGNORE_CASE)
+        val match = pattern.find(seasonTitle)
+        return match?.groupValues?.get(1)?.toIntOrNull()
+            ?: match?.groupValues?.get(2)?.toIntOrNull()
+            ?: 1
+    }
 
-        val selectors = listOf(
-            ".cover .thumbnail a", 
-            ".grid .cover a", 
-            ".rec-card a", 
-            ".related-content a",
-            "a[href*='/series/']", 
-            "a[href*='/filmes/']"
-        )
+    private fun String.findYear(): Int? {
+        val pattern = Regex("""\b(19\d{2}|20\d{2})\b""")
+        return pattern.find(this)?.value?.toIntOrNull()
+    }
 
-        for (selector in selectors) {
-            document.select(selector).forEach { element ->
-                try {
-                    val href = element.attr("href")?.takeIf { it.isNotBlank() } ?: return@forEach
-                    if (href == "#" || href.contains("javascript:")) return@forEach
-
-                    if (!href.contains(mainUrl) && !href.startsWith("/")) return@forEach
-
-                    val imgElement = element.selectFirst("img")
-                    val title = imgElement?.attr("alt")?.takeIf { it.isNotBlank() }
-                        ?: imgElement?.attr("title")?.takeIf { it.isNotBlank() }
-                        ?: element.attr("title")?.takeIf { it.isNotBlank() }
-                        ?: return@forEach
-
-                    if (title.equals(document.selectFirst("h1")?.text()?.trim(), ignoreCase = true)) {
-                        return@forEach
-                    }
-
-                    val poster = when {
-                        imgElement?.hasAttr("data-src") == true -> fixUrl(imgElement.attr("data-src"))
-                        imgElement?.hasAttr("src") == true -> fixUrl(imgElement.attr("src"))
-                        else -> null
-                    }
-
-                    val cleanTitle = cleanTitle(title)
-                    val year = extractYearFromUrl(href)
-
-                    val type = when {
-                        href.contains("/filmes/") -> TvType.Movie
-                        else -> TvType.TvSeries
-                    }
-
-                    if (type == TvType.Movie) {
-                        recommendations.add(newMovieSearchResponse(cleanTitle, fixUrl(href), type) {
-                            this.posterUrl = poster
-                            this.year = year
-                        })
-                    } else {
-                        recommendations.add(newTvSeriesSearchResponse(cleanTitle, fixUrl(href), type) {
-                            this.posterUrl = poster
-                            this.year = year
-                        })
-                    }
-
-                    if (recommendations.size >= 10) return recommendations
-                } catch (e: Exception) {
-                }
-            }
-
-            if (recommendations.isNotEmpty()) break
-        }
-
-        return recommendations.distinctBy { it.url }.take(10)
+    private fun String?.parseDuration(): Int? {
+        if (this.isNullOrBlank()) return null
+        val pattern = Regex("""(\d+)\s*(min|minutes|minutos)""", RegexOption.IGNORE_CASE)
+        val match = pattern.find(this)
+        return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
     private suspend fun searchOnTMDBAsDorama(query: String, url: String): TMDBInfo? {
@@ -1115,6 +1105,11 @@ class Doramogo : MainAPI() {
         .firstOrNull()
         ?.let { (key, _, _) -> "https://www.youtube.com/watch?v=$key" }
     }
+    
+    private data class DoramogoProxyUrls(
+        val primaryUrl: String,
+        val fallbackUrl: String
+    )
 
     private data class TMDBInfo(
         val id: Int,
@@ -1213,47 +1208,4 @@ class Doramogo : MainAPI() {
         val info: TMDBInfo,
         val score: DoramaScore
     )
-    
-    private fun extractEpisodeNumberFromEpisodeItem(episodeItem: Element): Int {
-        val episodeNumberSpan = episodeItem.selectFirst(".dorama-one-episode-number")
-        episodeNumberSpan?.text()?.let { spanText ->
-            val match = Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE).find(spanText)
-            if (match != null) {
-                return match.groupValues[1].toIntOrNull() ?: 1
-            }
-        }
-        
-        val episodeTitle = episodeItem.selectFirst(".episode-title")?.text() ?: ""
-        val pattern = Regex("""Episódio\s*(\d+)|Episode\s*(\d+)""", RegexOption.IGNORE_CASE)
-        val match = pattern.find(episodeTitle)
-        return match?.groupValues?.get(1)?.toIntOrNull()
-            ?: match?.groupValues?.get(2)?.toIntOrNull()
-            ?: 1
-    }
-    
-    private fun extractSeasonNumber(seasonTitle: String): Int {
-        val pattern = Regex("""(\d+)°\s*Temporada|Temporada\s*(\d+)""", RegexOption.IGNORE_CASE)
-        val match = pattern.find(seasonTitle)
-        return match?.groupValues?.get(1)?.toIntOrNull()
-            ?: match?.groupValues?.get(2)?.toIntOrNull()
-            ?: 1
-    }
-    
-    private fun extractSeasonNumberFromUrl(url: String): Int? {
-        val pattern = Regex("""temporada[_-](\d+)""", RegexOption.IGNORE_CASE)
-        val match = pattern.find(url)
-        return match?.groupValues?.get(1)?.toIntOrNull()
-    }
-    
-    private fun String.findYear(): Int? {
-        val pattern = Regex("""\b(19\d{2}|20\d{2})\b""")
-        return pattern.find(this)?.value?.toIntOrNull()
-    }
-    
-    private fun String?.parseDuration(): Int? {
-        if (this.isNullOrBlank()) return null
-        val pattern = Regex("""(\d+)\s*(min|minutes|minutos)""", RegexOption.IGNORE_CASE)
-        val match = pattern.find(this)
-        return match?.groupValues?.get(1)?.toIntOrNull()
-    }
 }
