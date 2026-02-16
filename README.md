@@ -54,7 +54,7 @@ Só mantenha os créditos!
 
 # Relacionados
 
-Projeto inspirado no pioneiro **saimuelrepo** — respeito total ao trabalho dele!
+Projeto inspirado no saimuelrepo.
 
 Repositórios de referência:  
 - [![saimuelrepo](https://img.shields.io/badge/saimuelrepo-Repositório-FF6B6B?style=for-the-badge&logo=github)](https://github.com/saimuelbr/saimuelrepo)  
