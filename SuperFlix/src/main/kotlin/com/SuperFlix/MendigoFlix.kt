@@ -1,4 +1,4 @@
-package com.SuperFlix
+package com.MendigoFlix
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -9,9 +9,9 @@ import org.jsoup.nodes.Element
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.text.SimpleDateFormat
 
-class SuperFlix : MainAPI() {
-    override var mainUrl = "https://superflix30.lol"
-    override var name = "SuperFlix"
+class MendigoFlix : MainAPI() {
+    override var mainUrl = "https://mendigoflix.lol/"
+    override var name = "MendigoFlix"
     override val hasMainPage = true
     override var lang = "pt-br"
     override val hasDownloadSupport = true
@@ -98,7 +98,7 @@ class SuperFlix : MainAPI() {
         } else {
             baseUrl
         }
-        
+
         val document = app.get(url).document
 
         val home = document.select("a.card, div.recs-grid a.rec-card").mapNotNull { element ->
@@ -221,7 +221,7 @@ class SuperFlix : MainAPI() {
         return try {
             val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
             val yearParam = year?.let { "&year=$it" } ?: ""
-            
+
             val searchUrl = if (isTv) {
                 "https://api.themoviedb.org/3/search/tv?api_key=$TMDB_API_KEY&query=$encodedQuery&language=pt-BR$yearParam"
             } else {
@@ -286,7 +286,7 @@ class SuperFlix : MainAPI() {
                 "Authorization" to "Bearer $TMDB_ACCESS_TOKEN",
                 "accept" to "application/json"
             )
-            
+
             val seriesDetailsUrl = "https://api.themoviedb.org/3/tv/$seriesId?api_key=$TMDB_API_KEY&language=pt-BR"
             val seriesResponse = app.get(seriesDetailsUrl, headers = headers, timeout = 10_000)
 
@@ -326,13 +326,13 @@ class SuperFlix : MainAPI() {
                 "Authorization" to "Bearer $TMDB_ACCESS_TOKEN",
                 "accept" to "application/json"
             )
-            
+
             val url = if (isTv) {
                 "https://api.themoviedb.org/3/tv/$id?api_key=$TMDB_API_KEY&language=pt-BR&append_to_response=credits,videos"
             } else {
                 "https://api.themoviedb.org/3/movie/$id?api_key=$TMDB_API_KEY&language=pt-BR&append_to_response=credits,videos"
             }
-            
+
             val response = app.get(url, headers = headers, timeout = 10_000)
 
             if (response.code != 200) return null
@@ -388,7 +388,7 @@ class SuperFlix : MainAPI() {
                         this.name = "Episódio $epNumber"
                         this.season = seasonNumber
                         this.episode = epNumber
-                        
+
                         element.selectFirst(".ep-desc, .description")?.text()?.trim()?.let { desc ->
                             if (desc.isNotBlank()) {
                                 this.description = desc
@@ -444,7 +444,7 @@ class SuperFlix : MainAPI() {
                 null
             }
         }
-        
+
         return recommendations
     }
 
@@ -470,7 +470,7 @@ class SuperFlix : MainAPI() {
 
         return if (isAnime || isSerie) {
             val type = if (isAnime) TvType.Anime else TvType.TvSeries
-            
+
             val episodes = extractEpisodesFromSite(document, url, isAnime, isSerie)
 
             newTvSeriesLoadResponse(title, url, type, episodes) {
@@ -482,7 +482,7 @@ class SuperFlix : MainAPI() {
             }
         } else {
             val playerUrl = findPlayerUrl(document)
-            
+
             newMovieLoadResponse(title, url, TvType.Movie, playerUrl ?: url) {
                 this.posterUrl = poster
                 this.year = year
@@ -663,12 +663,12 @@ class SuperFlix : MainAPI() {
         if (playButton != null) {
             return playButton.attr("data-url")
         }
-        
+
         val iframe = document.selectFirst("iframe[src*='fembed'], iframe[src*='filemoon'], iframe[src*='player'], iframe[src*='embed']")
         if (iframe != null) {
             return iframe.attr("src")
         }
-        
+
         val videoLink = document.selectFirst("a[href*='.m3u8'], a[href*='.mp4'], a[href*='watch']")
         return videoLink?.attr("href")
     }
@@ -679,7 +679,7 @@ class SuperFlix : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        return SuperFlixExtractor.extractVideoLinks(data, name, callback)
+        return MendigoFlixExtractor.extractVideoLinks(data, name, callback)
     }
 
     private data class TMDBInfo(
