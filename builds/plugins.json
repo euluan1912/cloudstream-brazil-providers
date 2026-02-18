@@ -1,10 +1,10 @@
 [
     {
         "iconUrl": "https://animefire.io/img/icons/favicon-192x192.png",
-        "jarFileSize": 116639,
+        "jarFileSize": 121340,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 30846,
+        "fileSize": 34713,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -22,10 +22,10 @@
     },
     {
         "iconUrl": "https://www.anitube.news/wp-content/uploads/cropped-Favicon6-192x192.png",
-        "jarFileSize": 78103,
+        "jarFileSize": 79644,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 21731,
+        "fileSize": 24167,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -43,10 +43,10 @@
     },
     {
         "iconUrl": "https://cineagora.net/templates/cineagora/images/touch-icon-180x180.png",
-        "jarFileSize": 237722,
+        "jarFileSize": 245371,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 58909,
+        "fileSize": 65493,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -66,10 +66,10 @@
     },
     {
         "iconUrl": "https://www.doramogo.net/assets/doramogo/images/apple-touch-icon.webp?version=200.50.10",
-        "jarFileSize": 223459,
+        "jarFileSize": 228327,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 52299,
+        "fileSize": 57467,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -87,10 +87,10 @@
     },
     {
         "iconUrl": "https://goyabu.io/wp-content/uploads/2025/12/cropped-goyabu-favicon-192x192.png",
-        "jarFileSize": 129596,
+        "jarFileSize": 137246,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 34525,
+        "fileSize": 40255,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -107,11 +107,11 @@
         "name": "Goyabu"
     },
     {
-        "iconUrl": "https://icons.duckduckgo.com/ip2/superflix22.lol.ico",
-        "jarFileSize": 216060,
+        "iconUrl": "https://mendigoflix.lol/assets/favicon.png",
+        "jarFileSize": 223736,
         "apiVersion": 1,
         "repositoryUrl": "https://github.com/lawlietbr/lietrepo",
-        "fileSize": 50108,
+        "fileSize": 54431,
         "status": 1,
         "language": "pt-br",
         "authors": [
@@ -122,11 +122,11 @@
             "Series",
             "Animes"
         ],
-        "version": 2,
-        "internalName": "SuperFlix",
-        "jarUrl": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/SuperFlix.jar",
-        "description": "SuperFlix - Filmes e S\u00e9ries em Portugu\u00eas",
-        "url": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/SuperFlix.cs3",
-        "name": "SuperFlix"
+        "version": 3,
+        "internalName": "MendigoFlix",
+        "jarUrl": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/MendigoFlix.jar",
+        "description": "MendigoFlix - Filmes e S\u00e9ries em Portugu\u00eas",
+        "url": "https://github.com/lawlietbr/lietrepo/raw/refs/heads/main/builds/MendigoFlix.cs3",
+        "name": "MendigoFlix"
     }
 ]
